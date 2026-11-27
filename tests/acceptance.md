@@ -18,3 +18,5 @@
 `node tests/webm-duration.cjs` 核对时钟、时长和音画尾部。安装 Playwright 后，`node tests/browser.cjs` 执行浏览器回归，`--case=repeatSwitches` 与 `--case=draftRecovery` 可单独复现两项流程。发布后另查正式站版本和原生安卓 Chrome 的录像、回看、翻转和下载。
 
 iPhone 的判断标准是同一距离、同一场景下比较取景边缘，而非只比较头部在两个取景框里的大小。Safari 提供的源画幅、分辨率和原生相机的智能构图仍可能不同。
+
+发布复核曾发现 HTML 已更新而版本 JSON 仍读到旧值。现固定主页面和版本文件的 EdgeOne 缓存策略，并在自动更新与手动检查中忽略低于当前版的构建号。单独运行 `--case=staleUpdate` 可验证旧 CDN 响应不会回退新版页面，较新的版本仍能触发刷新。

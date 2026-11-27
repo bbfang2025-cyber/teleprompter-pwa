@@ -9,8 +9,12 @@ const html = readFileSync(join(__dirname, '..', 'index.html'));
 const temp = mkdtempSync(join(tmpdir(), 'teleprompter-browser-'));
 process.chdir(temp);
 console.log('Browser test files:', temp);
+let testVersion = null;
 const server = createServer((req, res) => {
-  if (req.url === '/') return res.writeHead(200, {'Content-Type':'text/html; charset=utf-8'}).end(html);
+  if (req.url.startsWith('/version.json') && testVersion) {
+    return res.writeHead(200, {'Content-Type':'application/json'}).end(JSON.stringify(testVersion));
+  }
+  if (req.url.split('?')[0] === '/') return res.writeHead(200, {'Content-Type':'text/html; charset=utf-8'}).end(html);
   if (req.url === '/blank') return res.end('<title>Blank</title>');
   res.writeHead(204).end();
 });
@@ -619,6 +623,52 @@ async function test() {
     }
   }
 
+  async function staleUpdate() {
+    testVersion = {version:'1.3.0',build:'20261127-3'};
+    const {page:p,context,errors} = await pageSetup('orientation');
+    try {
+      await preview(p);
+      await p.waitForTimeout(1150);
+      assert.equal(new URL(p.url()).searchParams.get('v'),null);
+      await press(p,'btnSettings');
+      await press(p,'btnCheckUpdate');
+      await wait(p, () => document.querySelector('#toast').textContent.includes('已是最新版本'));
+      assert.equal(new URL(p.url()).searchParams.get('v'),null);
+
+      testVersion = {version:'1.3.2',build:'20261127-10'};
+      await p.evaluate(() => {
+        const toast = document.getElementById('toast');
+        const watch = new MutationObserver(() => {
+          if (!toast.textContent.includes('发现新版')) return;
+          watch.disconnect();
+          document.getElementById('btnCloseSettings').click();
+          document.getElementById('btnShutter').click();
+        });
+        watch.observe(toast, {childList:true,subtree:true});
+      });
+      await press(p,'btnCheckUpdate');
+      await visible(p,'countdownOverlay');
+      await p.waitForTimeout(300);
+      assert.equal(new URL(p.url()).searchParams.get('v'),null);
+      await press(p,'countdownCancel');
+      await preview(p);
+      await press(p,'btnSettings');
+      await press(p,'btnCheckUpdate');
+      await p.waitForURL(u => u.searchParams.get('v') === testVersion.build);
+      const repeatedLoads = [];
+      p.on('framenavigated', frame => {
+        if (frame === p.mainFrame()) repeatedLoads.push(frame.url());
+      });
+      await p.waitForTimeout(1150);
+      assert.deepEqual(repeatedLoads, []);
+      assert.deepEqual(errors, []);
+      console.log('Old CDN ignored, countdown protected, newer revision reloads once: PASS');
+    } finally {
+      testVersion = null;
+      await context.close();
+    }
+  }
+
   async function webKitUi() {
     const {page:p,context,errors} = await pageSetup('ui',320,640);
     await visible(p,'cameraFallback');
@@ -645,7 +695,7 @@ async function test() {
   }
 
   try {
-    const cases = { ui:testUi, mp4:()=>recordCase('mp4','mp4'), webm:()=>recordCase('webm','webm',!process.argv.includes('--quick')), failCodec:()=>recordCase('failCodec','webm'), interruption, frameStall, orientation, repeatSwitches, draftRecovery, framing, framingWebm: () => framing('framingWebm') };
+    const cases = { ui:testUi, mp4:()=>recordCase('mp4','mp4'), webm:()=>recordCase('webm','webm',!process.argv.includes('--quick')), failCodec:()=>recordCase('failCodec','webm'), interruption, frameStall, orientation, repeatSwitches, draftRecovery, staleUpdate, framing, framingWebm: () => framing('framingWebm') };
     const only = process.argv.find(a => a.startsWith('--case='))?.slice(7);
     if (useWebKit) {
       await webKitUi();
