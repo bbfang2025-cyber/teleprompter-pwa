@@ -36,7 +36,7 @@ async function test() {
         localStorage.setItem('tp_pwa_settings_v1', '{"speed":"junk","fontSize":"nan","winRect":{"x":1},"voiceFollow":"false"}');
       }
       if (variant === 'orientation' && !localStorage.getItem('tp_pwa_settings_v1')) {
-        localStorage.setItem('tp_pwa_settings_v1', '{"orientation":"landscape","speed":38}');
+        localStorage.setItem('tp_pwa_settings_v1', '{"framingMode":"landscape","speed":38}');
       }
       if (variant === 'freeze') {
         const request = HTMLVideoElement.prototype.requestVideoFrameCallback;
@@ -68,6 +68,12 @@ async function test() {
             ctx.fillRect(0, 0, canvas.width / 2, canvas.height);
             ctx.fillStyle = '#1010ee';
             ctx.fillRect(canvas.width / 2, 0, canvas.width / 2, canvas.height);
+            ctx.fillStyle = '#18f530';
+            for (const x of [0, canvas.width * 0.86]) {
+              for (const y of [0, canvas.height * 0.86]) {
+                ctx.fillRect(x, y, canvas.width * 0.14, canvas.height * 0.14);
+              }
+            }
           }, 35);
           media.getVideoTracks().forEach(source => source.stop());
           media = new MediaStream([track, ...media.getAudioTracks()]);
@@ -390,38 +396,41 @@ async function test() {
     const {page:p, context, errors} = await pageSetup('orientation');
     try {
       await preview(p);
-      assert.equal(await p.locator('#btnRatio').textContent(), '自动 · 竖屏');
+      assert.equal(await p.locator('#btnRatio').textContent(), '竖屏 9:16');
       assert.equal(await p.locator('#speedValue').textContent(), '30');
       await p.locator('#tpDragBar').focus();
       await p.keyboard.press('ArrowDown');
       const portraitY = (await p.locator('#tpWindow').boundingBox()).y;
       const requests = () => p.evaluate(() => r.videoRequests);
-      assert.equal((await requests())[0].aspectRatio, undefined);
+      function checkNativeRequests(items) {
+        for (const item of items) {
+          assert.equal(item.width, undefined);
+          assert.equal(item.height, undefined);
+          assert.equal(item.aspectRatio, undefined);
+        }
+      }
+      checkNativeRequests(await requests());
       await p.setViewportSize({width:844,height:390});
-      await wait(p, () => r.videoRequests.length === 2);
+      await wait(p, () => document.querySelector('#btnRatio').textContent === '横屏 16:9');
       await preview(p);
-      assert.equal(await p.locator('#btnRatio').textContent(), '自动 · 横屏');
-      assert.equal((await requests())[1].width.ideal, 1920);
-      assert.equal((await requests())[1].aspectRatio, undefined);
-      assert.ok(await p.evaluate(() => r.tracks[0].readyState === 'ended'));
       const controls = await Promise.all(['#bottomDock','.speed-strip','.shutter-row'].map(id => p.locator(id).boundingBox()));
       assert.ok(controls[2].x + controls[2].width <= controls[0].x + controls[0].width);
       assert.ok(controls[1].x + controls[1].width <= controls[2].x);
       await press(p,'btnSettings');
+      const beforeManual = (await requests()).length;
       await press(p,'btnOptLandscape');
-      await wait(p, () => r.videoRequests.length === 3);
-      await preview(p);
-      assert.equal((await requests())[2].aspectRatio.ideal, 16 / 9);
+      assert.equal((await requests()).length, beforeManual);
       await press(p,'btnCloseSettings');
       await p.setViewportSize({width:390,height:844});
       await sleep(450);
-      assert.equal((await requests()).length, 3);
-      assert.equal(await p.locator('#btnRatio').textContent(), '横屏');
+      await preview(p);
+      assert.equal(await p.locator('#btnRatio').textContent(), '横屏 16:9');
       assert.equal((await p.locator('#tpWindow').boundingBox()).y, portraitY);
       await press(p,'btnSettings');
+      const beforeAuto = (await requests()).length;
       await press(p,'btnOptAuto');
-      await wait(p, () => r.videoRequests.length === 4);
-      await preview(p);
+      assert.equal((await requests()).length, beforeAuto);
+      assert.equal(await p.locator('#btnRatio').textContent(), '竖屏 9:16');
       await press(p,'btnCloseSettings');
 
       await press(p,'btnShutter');
@@ -442,7 +451,7 @@ async function test() {
       assert.ok(await p.evaluate(() => r.tracks.every(track => track.readyState === 'ended')));
       await press(p,'btnRetake');
       await preview(p);
-      assert.equal((await requests()).at(-1).height.ideal, 1920);
+      checkNativeRequests(await requests());
       assert.deepEqual(errors, []);
       console.log('Automatic rotation, manual framing, separate window positions and safe recording rotation: PASS');
     } finally {
@@ -468,25 +477,61 @@ async function test() {
       await file.saveAs(path);
       return path;
     }
-    function checkPixels(file, mirrored) {
-      const pixels = execFileSync('ffmpeg',['-v','error','-ss','0.4','-i',file,
-        '-vf','format=rgb24,scale=2:1:flags=area','-frames:v','1','-f','rawvideo','pipe:1']);
-      assert.equal(pixels.length, 6);
-      assert.ok(mirrored ? pixels[2] > pixels[0] + 80 : pixels[0] > pixels[2] + 80);
-      assert.ok(mirrored ? pixels[3] > pixels[5] + 80 : pixels[5] > pixels[3] + 80);
+    function checkPixels(file, sourceWidth, sourceHeight, mirrored = false) {
+      const {width,height} = probe(file).streams.find(track => track.codec_type === 'video');
+      const rgb = execFileSync('ffmpeg',['-v','error','-ss','0.4','-i',file,
+        '-vf','format=rgb24','-frames:v','1','-f','rawvideo','pipe:1']);
+      assert.equal(rgb.length, width * height * 3);
+      const fit = Math.min(width / sourceWidth, height / sourceHeight);
+      const contentW = sourceWidth * fit;
+      const contentH = sourceHeight * fit;
+      const left = (width - contentW) / 2;
+      const top = (height - contentH) / 2;
+      const pixel = (x,y) => {
+        const at = 3 * (Math.floor(y) * width + Math.floor(x));
+        return [rgb[at],rgb[at+1],rgb[at+2]];
+      };
+      for (const x of [.06,.94]) {
+        for (const y of [.06,.94]) {
+          const [r,g,b] = pixel(left + x * contentW, top + y * contentH);
+          assert.ok(g > r + 75 && g > b + 75, 'Original corner visible in ' + file);
+        }
+      }
+      const [leftRed, , leftBlue] = pixel(left + contentW * .25, height / 2);
+      const [rightRed, , rightBlue] = pixel(left + contentW * .75, height / 2);
+      assert.ok(mirrored ? leftBlue > leftRed + 80 : leftRed > leftBlue + 80);
+      assert.ok(mirrored ? rightRed > rightBlue + 80 : rightBlue > rightRed + 80);
+      assert.ok(pixel(left > 5 ? 2 : width / 2, top > 5 ? 2 : height / 2).every(value => value < 32),
+        'Unfilled frame is black instead of enlarged in ' + file);
+      return {width,height};
     }
 
     try {
       await preview(p);
-      await press(p,'btnRatio');
-      await wait(p, () => r.videoRequests.length >= 2);
+      const initialStream = await p.locator('#previewVideo').evaluate(video => video.srcObject.id);
+      assert.equal(await p.locator('#btnRatio').textContent(),'竖屏 9:16');
+      const defaultBox = await p.locator('#previewVideo').boundingBox();
+      assert.ok(Math.abs(defaultBox.width / defaultBox.height - 9 / 16) < .02);
+      assert.equal(await p.locator('#previewVideo').evaluate(video => getComputedStyle(video).objectFit),'contain');
+      await record();
+      const automatic = checkPixels(await download('automatic-portrait'),240,400);
+      assert.equal(automatic.width / automatic.height,9 / 16);
+      await press(p,'btnRetake');
       await preview(p);
+      const streamBeforeToggle = await p.locator('#previewVideo').evaluate(video => video.srcObject.id);
+      assert.notEqual(streamBeforeToggle,initialStream);
+      await press(p,'btnRatio');
+      assert.equal(await p.locator('#btnRatio').textContent(),'横屏 16:9');
+      const landscapeBox = await p.locator('#previewVideo').boundingBox();
+      assert.ok(Math.abs(landscapeBox.width / landscapeBox.height - 16 / 9) < .02);
+      assert.equal(await p.locator('#previewVideo').evaluate(video => video.srcObject.id),streamBeforeToggle);
+      assert.equal(await p.locator('#previewVideo').evaluate(video => getComputedStyle(video).objectFit),'contain');
       await record();
       const original = await download('manual-landscape');
       const originalMeta = probe(original);
       const landscape = originalMeta.streams.find(s => s.codec_type === 'video');
       assert.ok(Math.abs(landscape.width / landscape.height - 16 / 9) < 0.025);
-      checkPixels(original,false);
+      checkPixels(original,240,400);
       audioIsNonSilent(original);
 
       await press(p,'btnFlipVideo');
@@ -498,7 +543,7 @@ async function test() {
       await wait(p, () => document.querySelector('#btnFlipVideo').getAttribute('aria-pressed') === 'true' &&
         document.querySelector('#btnDownload').download.includes('_镜像'));
       const mirrored = await download('mirrored-landscape');
-      checkPixels(mirrored,true);
+      checkPixels(mirrored,240,400,true);
       audioIsNonSilent(mirrored);
       assert.ok(Math.abs(Number(probe(mirrored).format.duration) - Number(originalMeta.format.duration)) < 0.35);
       await press(p,'btnFlipVideo');
@@ -508,12 +553,67 @@ async function test() {
 
       await p.evaluate(() => r.mode = 'forceLandscape');
       await press(p,'btnRatio');
-      await wait(p, () => document.querySelector('#previewVideo').videoWidth === 400);
+      assert.equal(await p.locator('#btnRatio').textContent(),'竖屏 9:16');
       await record();
-      const portrait = probe(await download('manual-portrait')).streams.find(s => s.codec_type === 'video');
-      assert.ok(Math.abs(portrait.width / portrait.height - 9 / 16) < 0.025);
+      const portrait = checkPixels(await download('manual-portrait'),400,240);
+      assert.equal(portrait.width / portrait.height,9 / 16);
       assert.deepEqual(errors, []);
-      console.log('Manual portrait and landscape output, mirror pixels, preserved audio and cancellation: PASS', {landscape,portrait});
+      console.log('Full camera corners and black padding in default, manual portrait, manual landscape and mirror export: PASS', {landscape,portrait});
+    } finally {
+      await context.close();
+    }
+  }
+
+  async function repeatSwitches() {
+    const {page:p, context, errors} = await pageSetup('orientation',844,390);
+    try {
+      await preview(p);
+      assert.equal(await p.locator('#btnRatio').textContent(),'横屏 16:9');
+      const trackId = () => p.locator('#previewVideo').evaluate(video => video.srcObject.getVideoTracks()[0].id);
+      const initial = await trackId();
+      for (let i = 0; i < 5; i++) await press(p,'btnRatio');
+      assert.equal(await p.locator('#btnRatio').textContent(),'竖屏 9:16');
+      assert.equal(await trackId(), initial);
+      assert.equal(await p.evaluate(() => r.videoRequests.length),1);
+      await p.reload();
+      await preview(p);
+      assert.equal(await p.locator('#btnRatio').textContent(),'竖屏 9:16');
+      await press(p,'btnSettings');
+      await press(p,'btnOptAuto');
+      await press(p,'btnCloseSettings');
+      await p.reload();
+      await preview(p);
+      assert.equal(await p.locator('#btnRatio').textContent(),'横屏 16:9');
+      assert.deepEqual(errors, []);
+      console.log('First open in landscape, rapid switching without camera reload, fixed mode and auto persisted: PASS');
+    } finally {
+      await context.close();
+    }
+  }
+
+  async function draftRecovery() {
+    const {page:p, context, errors} = await pageSetup('ui',320,640);
+    try {
+      await preview(p);
+      await press(p,'btnCloseWechat');
+      await p.evaluate(() => r.mode = 'denyAll');
+      await press(p,'btnShutter');
+      await visible(p,'cameraFallback');
+      await press(p,'btnPreviewNoCam');
+      await press(p,'btnTopScript');
+      await press(p,'btnNewScript');
+      const draft = '带表情的长稿 🎥\\n\\n' + '这段台词需要保存。'.repeat(400);
+      await p.locator('#scriptTitleInput').fill('我的本地草稿');
+      await p.locator('#scriptBodyInput').fill(draft);
+      await press(p,'btnCloseScripts');
+      await p.reload();
+      await preview(p);
+      await press(p,'btnCloseWechat');
+      await press(p,'btnTopScript');
+      assert.equal(await p.locator('#scriptTitleInput').inputValue(),'我的本地草稿');
+      assert.equal(await p.locator('#scriptBodyInput').inputValue(),draft);
+      assert.deepEqual(errors, []);
+      console.log('Draft made with permission denied survives a reload, including multiline text and emoji: PASS');
     } finally {
       await context.close();
     }
@@ -545,7 +645,7 @@ async function test() {
   }
 
   try {
-    const cases = { ui:testUi, mp4:()=>recordCase('mp4','mp4'), webm:()=>recordCase('webm','webm',!process.argv.includes('--quick')), failCodec:()=>recordCase('failCodec','webm'), interruption, frameStall, orientation, framing, framingWebm: () => framing('framingWebm') };
+    const cases = { ui:testUi, mp4:()=>recordCase('mp4','mp4'), webm:()=>recordCase('webm','webm',!process.argv.includes('--quick')), failCodec:()=>recordCase('failCodec','webm'), interruption, frameStall, orientation, repeatSwitches, draftRecovery, framing, framingWebm: () => framing('framingWebm') };
     const only = process.argv.find(a => a.startsWith('--case='))?.slice(7);
     if (useWebKit) {
       await webKitUi();
