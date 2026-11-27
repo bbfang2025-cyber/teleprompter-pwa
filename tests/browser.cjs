@@ -34,7 +34,7 @@ async function test() {
     });
     if (useWebKit) await context.grantPermissions(['camera','microphone']);
     await context.addInitScript(({variant,useWebKit}) => {
-      window.r = { calls: [], videoRequests: [], tracks: [], locks: [], speech: [], sharing: [], urls: [], revoked: [], mode: 'ok' };
+      window.r = { calls: [], videoRequests: [], bitrates: [], tracks: [], locks: [], speech: [], sharing: [], urls: [], revoked: [], mode: 'ok' };
       if (variant === 'brokenStorage') {
         localStorage.setItem('tp_pwa_scripts_v1', '[null,{},{"id":"good","body":"正文","title":12}]');
         localStorage.setItem('tp_pwa_settings_v1', '{"speed":"junk","fontSize":"nan","winRect":{"x":1},"voiceFollow":"false"}');
@@ -54,12 +54,17 @@ async function test() {
         r.calls.push(Boolean(settings.audio));
         r.videoRequests.push(settings.video);
         if (r.mode === 'denyAll' || (settings.audio && r.mode === 'denyAudio')) throw new DOMException('denied', 'NotAllowedError');
+        if (r.mode === 'noHdFormats' && settings.video.width) throw new DOMException('unsupported camera size', 'OverconstrainedError');
         let media = await orig(settings);
-        if (variant.startsWith('framing')) {
+        if (variant.startsWith('framing') || variant === 'quality') {
           // Feed the opposite orientation, as a browser can do with native phone axes.
           const canvas = document.createElement('canvas');
-          canvas.width = r.mode === 'forceLandscape' ? 400 : 240;
-          canvas.height = r.mode === 'forceLandscape' ? 240 : 320;
+          if (variant === 'quality') {
+            [canvas.width, canvas.height] = settings.video.width ? [1440,1920] : [480,640];
+          } else {
+            canvas.width = r.mode === 'forceLandscape' ? 400 : 240;
+            canvas.height = r.mode === 'forceLandscape' ? 240 : 320;
+          }
           const ctx = canvas.getContext('2d');
           const controlled = canvas.captureStream(30);
           const track = controlled.getVideoTracks()[0];
@@ -117,6 +122,7 @@ async function test() {
           construct(target, args) {
             if (variant === 'failCodec' && args[1]?.mimeType?.includes('mp4')) throw new DOMException('codec down','NotSupportedError');
             const recorder = Reflect.construct(target,args);
+            r.bitrates.push(args[1]?.videoBitsPerSecond);
             r.events ||= [];
             r.events.push('new: ' + args[1]?.mimeType);
             for (const type of ['error','start','stop','pause','resume','dataavailable']) {
@@ -408,8 +414,8 @@ async function test() {
       const requests = () => p.evaluate(() => r.videoRequests);
       function checkNativeRequests(items) {
         for (const item of items) {
-          assert.equal(item.width, undefined);
-          assert.equal(item.height, undefined);
+          assert.equal(item.width?.ideal, 1920);
+          assert.equal(item.height?.ideal, 1080);
           assert.equal(item.aspectRatio, undefined);
         }
       }
@@ -461,6 +467,42 @@ async function test() {
       checkNativeRequests(await requests());
       assert.deepEqual(errors, []);
       console.log('Automatic rotation, manual framing, separate window positions and safe recording rotation: PASS');
+    } finally {
+      await context.close();
+    }
+  }
+
+  async function quality() {
+    const { page:p, context, errors } = await pageSetup('quality');
+    async function checkDownload(name) {
+      const [download] = await Promise.all([p.waitForEvent('download'),press(p,'btnDownload')]);
+      const file = name + '.mp4';
+      await download.saveAs(file);
+      const {width,height} = probe(file).streams.find(stream => stream.codec_type === 'video');
+      assert.deepEqual([width,height],[1080,1920]);
+      assert.match(await p.locator('#reviewMeta').textContent(),/1080×1920/);
+      audioIsNonSilent(file);
+    }
+    try {
+      await preview(p);
+      await press(p,'btnShutter');
+      await rec(p);
+      await sleep(1100);
+      await press(p,'btnShutter');
+      await visible(p,'reviewOverlay');
+      await wait(p, () => document.querySelector('#reviewVideo').readyState >= 1);
+      await checkDownload('hd-portrait');
+      await press(p,'btnFlipVideo');
+      await wait(p, () => document.querySelector('#btnFlipVideo').getAttribute('aria-pressed') === 'true');
+      await checkDownload('hd-portrait-mirror');
+      assert.deepEqual(await p.evaluate(() => r.bitrates),[7000000,7000000]);
+      await p.evaluate(() => { r.mode = 'noHdFormats'; r.videoRequests = []; });
+      await press(p,'btnRetake');
+      await preview(p);
+      assert.deepEqual(await p.evaluate(() => r.videoRequests.map(item => item.width?.ideal ?? null)),[1920,1280,null]);
+      assert.equal(await p.locator('#previewVideo').evaluate(video => video.videoHeight),640);
+      assert.deepEqual(errors,[]);
+      console.log('1440×1920 source exports true 1080×1920 with audio, mirror keeps resolution, rejected HD requests fall back: PASS');
     } finally {
       await context.close();
     }
@@ -728,7 +770,7 @@ async function test() {
   }
 
   try {
-    const cases = { ui:testUi, mp4:()=>recordCase('mp4','mp4'), webm:()=>recordCase('webm','webm',!process.argv.includes('--quick')), failCodec:()=>recordCase('failCodec','webm'), interruption, frameStall, orientation, repeatSwitches, draftRecovery, staleUpdate, framing, framingWebm: () => framing('framingWebm') };
+    const cases = { ui:testUi, mp4:()=>recordCase('mp4','mp4'), webm:()=>recordCase('webm','webm',!process.argv.includes('--quick')), failCodec:()=>recordCase('failCodec','webm'), interruption, frameStall, orientation, repeatSwitches, draftRecovery, staleUpdate, quality, framing, framingWebm: () => framing('framingWebm') };
     const only = process.argv.find(a => a.startsWith('--case='))?.slice(7);
     if (useWebKit) {
       await webKitUi();

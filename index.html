@@ -1665,7 +1665,7 @@
       <div class="setting-card">
         <div class="setting-row">
           <span class="setting-label">应用版本</span>
-          <span id="appVersionLabel" class="setting-val">v1.3.3</span>
+          <span id="appVersionLabel" class="setting-val">v1.3.4</span>
         </div>
         <button id="btnCheckUpdate" class="secondary-btn" type="button">检查更新 / 刷新最新版</button>
       </div>
@@ -1711,8 +1711,8 @@
 
     const STORAGE_SCRIPTS_KEY = 'tp_pwa_scripts_v1';
     const STORAGE_SETTINGS_KEY = 'tp_pwa_settings_v1';
-    const APP_VERSION = '1.3.3';
-    const APP_BUILD = '20261127-7';
+    const APP_VERSION = '1.3.4';
+    const APP_BUILD = '20261127-8';
     const SPEED_MIN = 10;
     const SPEED_MAX = 110;
 
@@ -1998,9 +1998,14 @@
     const fillsFrame = (width, height, ratio) =>
       Boolean(width && height) && (ratio < 1 || width <= height);
 
-    function getVideoConstraints() {
-      // iOS may change camera format or crop when a width, height or aspect ratio is requested.
+    function getVideoConstraints(size) {
       const constraints = { facingMode: { ideal: 'user' } };
+      if (!size) return constraints;
+      // Request the camera preset in its primary orientation. Use the decoded video
+      // dimensions, which account for phone rotation, when framing the recording.
+      constraints.width = { ideal: size[0] };
+      constraints.height = { ideal: size[1] };
+      constraints.frameRate = { ideal: 30 };
       if (navigator.mediaDevices?.getSupportedConstraints?.().resizeMode) {
         constraints.resizeMode = { ideal: 'none' };
       }
@@ -2171,12 +2176,14 @@
       let granted;
       const audio = withAudio ? { echoCancellation: true, noiseSuppression: true, autoGainControl: true } : false;
       try {
-        try {
-          granted = await navigator.mediaDevices.getUserMedia({ video: getVideoConstraints(), audio });
-        } catch (error) {
-          if (request !== cameraRequest) return false;
-          if (error.name !== 'OverconstrainedError' && error.name !== 'ConstraintNotSatisfiedError') throw error;
-          granted = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: withAudio });
+        for (const size of [[1920, 1080], [1280, 720], null]) {
+          try {
+            granted = await navigator.mediaDevices.getUserMedia({ video: getVideoConstraints(size), audio: size ? audio : withAudio });
+            break;
+          } catch (error) {
+            if (request !== cameraRequest || document.hidden) return false;
+            if (!size || !['OverconstrainedError', 'ConstraintNotSatisfiedError'].includes(error.name)) throw error;
+          }
         }
 
         if (request !== cameraRequest || document.hidden) {
@@ -3213,8 +3220,10 @@
       try { return MediaRecorder.isTypeSupported(mime); } catch (_) { return false; }
     }
 
-    function recorderOptions(mimeType) {
-      return mimeType ? { mimeType, videoBitsPerSecond: 4500000 } : { videoBitsPerSecond: 4500000 };
+    function recorderOptions(mimeType, input) {
+      const { width, height } = input.getVideoTracks()[0].getSettings();
+      const videoBitsPerSecond = width * height > 1280 * 720 ? 7000000 : 4500000;
+      return mimeType ? { mimeType, videoBitsPerSecond } : { videoBitsPerSecond };
     }
 
     function durationOutlier(mediaMs, expectedMs) {
@@ -3892,7 +3901,7 @@
           const mimeType = candidates.shift();
           let recorder;
           try {
-            recorder = new MediaRecorder(input, recorderOptions(mimeType));
+            recorder = new MediaRecorder(input, recorderOptions(mimeType, input));
           } catch (_) {
             continue;
           }
@@ -4190,7 +4199,7 @@
             while (candidates.length) {
               const mimeType = candidates.shift();
               try {
-                recorder = new MediaRecorder(input, recorderOptions(mimeType));
+                recorder = new MediaRecorder(input, recorderOptions(mimeType, input));
               } catch (_) {
                 continue;
               }
@@ -4387,7 +4396,8 @@
       const width = reviewVideo.videoWidth;
       const height = reviewVideo.videoHeight;
       const direction = width && height ? width > height ? '横屏' : height > width ? '竖屏' : '方形' : '';
-      reviewMeta.textContent = [time, direction, ext.toUpperCase(), sizeMb + ' MB'].filter(Boolean).join(' · ');
+      const resolution = width && height ? `${width}×${height}` : '';
+      reviewMeta.textContent = [time, direction, resolution, ext.toUpperCase(), sizeMb + ' MB'].filter(Boolean).join(' · ');
     }
 
     reviewVideo.addEventListener('loadedmetadata', renderReviewMeta);
