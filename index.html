@@ -12,7 +12,7 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <title>极简提词录像</title>
-  <link rel="manifest" href="./manifest.json">
+  <link rel="manifest" href="./manifest.json?v=20261127-3">
   <link rel="icon" type="image/svg+xml" href="./icon.svg">
   <link rel="apple-touch-icon" href="./icon.svg">
   <style>
@@ -21,8 +21,11 @@
       --amber: #FF9F0A;
       --green: #30D158;
       --blue: #0A84FF;
-      --tp-opacity: 0.56;
-      --tp-blur: 16px;
+      --tp-opacity: 0.44;
+      --glass-tint: rgba(25, 33, 45, .37);
+      --glass-rim: rgba(239, 248, 255, .27);
+      --glass-sheen: linear-gradient(155deg, rgba(235, 245, 255, .16), rgba(235, 245, 255, .03) 56%, rgba(164, 191, 217, .08));
+      --tp-blur: 11px;
       --tp-border-alpha: 0.16;
       --tp-shadow-alpha: 0.45;
       --tp-highlight-alpha: 0.12;
@@ -80,6 +83,21 @@
       transform: scaleX(-1);
       background: #000000;
       z-index: 1;
+    }
+
+    body[data-framing="landscape"] #previewVideo,
+    body[data-framing="portrait"] #previewVideo {
+      inset: 50% auto auto 50%;
+      object-fit: cover;
+      transform: translate(-50%, -50%) scaleX(-1);
+    }
+    body[data-framing="landscape"] #previewVideo {
+      width: min(100vw, 177.7778dvh);
+      height: min(100dvh, 56.25vw);
+    }
+    body[data-framing="portrait"] #previewVideo {
+      width: min(100vw, 56.25dvh);
+      height: min(100dvh, 177.7778vw);
     }
 
     .vignette-top,
@@ -314,7 +332,9 @@
       z-index: 20;
       display: flex;
       flex-direction: column;
-      background: rgba(14, 15, 19, var(--tp-opacity));
+      background:
+        linear-gradient(145deg, rgba(219, 237, 255, var(--tp-highlight-alpha)), transparent 58%),
+        rgba(23, 31, 44, var(--tp-opacity));
       backdrop-filter: blur(var(--tp-blur)) saturate(145%);
       -webkit-backdrop-filter: blur(var(--tp-blur)) saturate(145%);
       border: 1px solid rgba(255, 255, 255, var(--tp-border-alpha));
@@ -503,7 +523,7 @@
       padding: 3px;
       max-width: 100%;
       border-radius: 999px;
-      background: rgba(20, 21, 26, 0.58);
+      background: var(--glass-sheen), var(--glass-tint);
       backdrop-filter: blur(20px) saturate(150%);
       -webkit-backdrop-filter: blur(20px) saturate(150%);
       border: 1px solid rgba(255, 255, 255, 0.16);
@@ -1295,9 +1315,49 @@
     .ios-switch::after { top: 8px; }
     .ios-switch[aria-checked="true"] { background: transparent; }
     .ios-switch[aria-checked="true"]::before { background: var(--green); }
+    .hud-capsule, .dock-pill-btn, #btnShutter, #tpResetBtn, #btnFlipVideo, #btnRetake, #btnDownload {
+      background: var(--glass-sheen), var(--glass-tint);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, .14), 0 5px 16px rgba(0, 0, 0, .24);
+    }
+    .hud-capsule, .dock-pill-btn, .speed-strip {
+      border-color: var(--glass-rim);
+    }
+    .dock-pill-btn.pause-mode.is-paused {
+      color: #241603;
+      background: linear-gradient(140deg, rgba(255, 227, 161, .94), rgba(255, 171, 64, .88));
+    }
+    #btnSaveAlbum {
+      background: linear-gradient(150deg, #1672ce, #214c98);
+      border: 1px solid rgba(204, 231, 255, .47);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, .2), 0 5px 18px rgba(9, 35, 78, .4);
+    }
     #countdownCancel { min-height: 44px; }
     #reviewNotice { margin: 0; font-size: 13px; }
     #reviewNotice:empty { display: none; }
+    .review-edit {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 44px;
+      flex-shrink: 0;
+    }
+    #btnFlipVideo {
+      min-height: 44px;
+      padding: 0 13px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, .14);
+      flex-shrink: 0;
+    }
+    #flipStatus { font-size: 13px; }
+    .flip-source {
+      position: fixed;
+      width: 1px;
+      height: 1px;
+      bottom: 0;
+      left: 0;
+      opacity: 0;
+      pointer-events: none;
+    }
     .review-tip {
       margin: 0;
       font-size: 12px;
@@ -1307,7 +1367,7 @@
     }
     .ratio-seg {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 6px;
       padding: 4px;
       border-radius: 12px;
@@ -1355,6 +1415,15 @@
       #btnShutter { width: 56px; height: 56px; }
       .shutter-core { width: 42px; height: 42px; }
       .sheet-body { padding-top: 8px; }
+    }
+    @media (orientation: landscape) and (min-width: 720px) and (max-height: 500px) {
+      #bottomDock {
+        display: grid;
+        grid-template-columns: auto minmax(235px, 330px);
+        justify-content: center;
+        gap: 14px;
+      }
+      #toast { bottom: calc(max(6px, var(--safe-bottom)) + 84px); }
     }
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
@@ -1447,11 +1516,11 @@
   <footer id="bottomDock">
     <div class="speed-strip" aria-label="滚屏速度调节">
       <button id="btnSpeedDown" class="speed-step-btn" type="button" aria-label="减慢滚屏速度">−</button>
-      <button class="speed-preset-btn" type="button" data-speed="24">慢</button>
-      <button class="speed-preset-btn active" type="button" data-speed="38">适中</button>
+      <button class="speed-preset-btn" type="button" data-speed="20">慢</button>
+      <button class="speed-preset-btn active" type="button" data-speed="30">适中</button>
       <button class="speed-preset-btn" type="button" data-speed="62">快</button>
       <div class="speed-readout" aria-live="polite">
-        <strong id="speedValue">38</strong>
+        <strong id="speedValue">30</strong>
         <span>px/s</span>
       </div>
       <button id="btnSpeedUp" class="speed-step-btn" type="button" aria-label="加快滚屏速度">+</button>
@@ -1535,13 +1604,14 @@
       <div class="setting-card">
         <div class="setting-row">
           <span class="setting-label">画面比例</span>
-          <span id="cameraRatioStat" class="setting-val">竖屏 9:16</span>
+          <span id="cameraRatioStat" class="setting-val" aria-live="polite">等待取景</span>
         </div>
         <div class="ratio-seg" role="group" aria-label="画面比例切换">
-          <button id="btnOptPortrait" class="ratio-seg-btn active" type="button" data-orientation="portrait" aria-pressed="true">竖屏 9:16</button>
-          <button id="btnOptLandscape" class="ratio-seg-btn" type="button" data-orientation="landscape" aria-pressed="false">横屏 16:9</button>
+          <button id="btnOptAuto" class="ratio-seg-btn active" type="button" aria-pressed="true">跟随屏幕</button>
+          <button id="btnOptPortrait" class="ratio-seg-btn" type="button" aria-pressed="false">竖屏 9:16</button>
+          <button id="btnOptLandscape" class="ratio-seg-btn" type="button" aria-pressed="false">横屏 16:9</button>
         </div>
-        <p id="cameraRatioHint" class="setting-desc">如实显示相机实际采集视野（所见即所得）；微信内置浏览器可能强制横屏，推荐用 Safari / 默认浏览器打开。</p>
+        <p id="cameraRatioHint" class="setting-desc">跟随屏幕时，关闭手机的竖排锁定并横拿手机。手动 9:16 或 16:9 会请求指定比例，视野和成片比例取决于相机实际输出。</p>
       </div>
 
       <div class="setting-card">
@@ -1560,9 +1630,9 @@
       <div class="setting-card">
         <div class="setting-row">
           <label class="setting-label" for="sliderSpeed">匀速滚屏速度</label>
-          <span id="speedSliderVal" class="setting-val">38 px/s</span>
+          <span id="speedSliderVal" class="setting-val">30 px/s</span>
         </div>
-        <input id="sliderSpeed" class="ios-slider" name="speed" type="range" min="15" max="110" step="1" value="38">
+        <input id="sliderSpeed" class="ios-slider" name="speed" type="range" min="10" max="110" step="1" value="30">
       </div>
 
       <div class="setting-card">
@@ -1576,9 +1646,9 @@
       <div class="setting-card">
         <div class="setting-row">
           <label class="setting-label" for="sliderOpacity">悬浮窗不透明度</label>
-          <span id="opacityVal" class="setting-val">56%</span>
+          <span id="opacityVal" class="setting-val">44%</span>
         </div>
-        <input id="sliderOpacity" name="opacity" class="ios-slider" type="range" min="0" max="90" step="2" value="56">
+        <input id="sliderOpacity" name="opacity" class="ios-slider" type="range" min="0" max="90" step="2" value="44">
       </div>
 
       <div class="setting-card">
@@ -1595,7 +1665,7 @@
       <div class="setting-card">
         <div class="setting-row">
           <span class="setting-label">应用版本</span>
-          <span id="appVersionLabel" class="setting-val">v1.2.0</span>
+          <span id="appVersionLabel" class="setting-val">v1.3.0</span>
         </div>
         <button id="btnCheckUpdate" class="secondary-btn" type="button">检查更新 / 刷新最新版</button>
       </div>
@@ -1613,6 +1683,10 @@
       <video id="reviewVideo" controls playsinline></video>
     </div>
     <p id="reviewNotice" role="status"></p>
+    <div class="review-edit">
+      <button id="btnFlipVideo" type="button" aria-pressed="false">左右翻转</button>
+      <span id="flipStatus" role="status"></span>
+    </div>
     <p class="review-tip">「保存到手机相册」调系统分享选“存储视频”直接进相册；若弹窗受限，点「存为文件」下载兜底</p>
     <div class="review-actions">
       <button id="btnRetake" type="button">重拍</button>
@@ -1637,9 +1711,9 @@
 
     const STORAGE_SCRIPTS_KEY = 'tp_pwa_scripts_v1';
     const STORAGE_SETTINGS_KEY = 'tp_pwa_settings_v1';
-    const APP_VERSION = '1.2.0';
-    const APP_BUILD = '20261127-2';
-    const SPEED_MIN = 15;
+    const APP_VERSION = '1.3.0';
+    const APP_BUILD = '20261127-3';
+    const SPEED_MIN = 10;
     const SPEED_MAX = 110;
 
     const DEFAULT_SCRIPTS = [
@@ -1658,14 +1732,16 @@
     ];
 
     const DEFAULT_SETTINGS = {
-      speed: 38,
+      speed: 30,
+      speedRevision: 2,
       fontSize: 30,
-      opacity: 56,
+      opacity: 44,
       leadDelay: 1.8,
       voiceFollow: false,
-      orientation: 'portrait',
+      framingMode: 'auto',
       activeScriptId: 'demo_1',
-      winRect: null
+      winRect: null,
+      landscapeWinRect: null
     };
 
     // ---------- DOM Refs ----------
@@ -1730,6 +1806,7 @@
 
     const switchVoice = $('switchVoice');
     const cameraRatioStat = $('cameraRatioStat');
+    const btnOptAuto = $('btnOptAuto');
     const btnOptPortrait = $('btnOptPortrait');
     const btnOptLandscape = $('btnOptLandscape');
     const sliderFontSize = $('sliderFontSize');
@@ -1747,6 +1824,8 @@
     const reviewNotice = $('reviewNotice');
     const btnDownload = $('btnDownload');
     const reviewVideo = $('reviewVideo');
+    const btnFlipVideo = $('btnFlipVideo');
+    const flipStatus = $('flipStatus');
     const btnRetake = $('btnRetake');
     const btnSaveAlbum = $('btnSaveAlbum');
     const toastEl = $('toast');
@@ -1859,16 +1938,22 @@
             const value = Number(parsed[key] ?? DEFAULT_SETTINGS[key]);
             return Number.isFinite(value) ? clamp(value, min, max) : DEFAULT_SETTINGS[key];
           };
-          const rect = parsed.winRect;
+          const savedSpeed = Math.round(bounded('speed', SPEED_MIN, SPEED_MAX));
+          // Move the old default to the new medium speed, while retaining custom speeds.
+          const speed = parsed.speedRevision !== 2 && savedSpeed === 38 ? DEFAULT_SETTINGS.speed : savedSpeed;
+          const validRect = (rect) =>
+            rect && ['x', 'y', 'width', 'height'].every(key => Number.isFinite(rect[key])) ? rect : null;
           return {
-            speed: Math.round(bounded('speed', SPEED_MIN, SPEED_MAX)),
+            speed,
+            speedRevision: 2,
             fontSize: bounded('fontSize', 20, 48),
             opacity: bounded('opacity', 0, 90),
             leadDelay: bounded('leadDelay', 0, 3),
             voiceFollow: parsed.voiceFollow === true,
-            orientation: parsed.orientation === 'landscape' ? 'landscape' : 'portrait',
+            framingMode: ['portrait', 'landscape'].includes(parsed.framingMode) ? parsed.framingMode : 'auto',
             activeScriptId: typeof parsed.activeScriptId === 'string' ? parsed.activeScriptId : DEFAULT_SETTINGS.activeScriptId,
-            winRect: rect && ['x', 'y', 'width', 'height'].every(key => Number.isFinite(rect[key])) ? rect : null
+            winRect: validRect(parsed.winRect),
+            landscapeWinRect: validRect(parsed.landscapeWinRect)
           };
 
         }
@@ -1903,41 +1988,47 @@
     });
 
     // ---------- Camera preview and capture ownership ----------
-    function getVideoConstraints(orientation, tier = 'hd') {
-      const isLand = orientation === 'landscape';
-      if (tier === 'sd') {
-        return {
-          facingMode: { ideal: 'user' },
-          aspectRatio: { ideal: isLand ? 16 / 9 : 9 / 16 },
-          width: { ideal: isLand ? 1280 : 720 },
-          height: { ideal: isLand ? 720 : 1280 }
-        };
-      }
-      return {
+    const landscapeViewport = window.matchMedia('(orientation: landscape)');
+    const screenDirection = () => landscapeViewport.matches ? 'landscape' : 'portrait';
+    const targetDirection = () => settings.framingMode === 'auto' ? screenDirection() : settings.framingMode;
+
+    function getVideoConstraints(direction, preferNative, hd = true) {
+      const landscape = direction === 'landscape';
+      const longEdge = hd ? 1920 : 1280;
+      const shortEdge = hd ? 1080 : 720;
+      const constraints = {
         facingMode: { ideal: 'user' },
-        aspectRatio: { ideal: isLand ? 16 / 9 : 9 / 16 },
-        width: { ideal: isLand ? 1920 : 1080 },
-        height: { ideal: isLand ? 1080 : 1920 },
-        frameRate: { ideal: 30, max: 30 }
+        width: { ideal: landscape ? longEdge : shortEdge },
+        height: { ideal: landscape ? shortEdge : longEdge }
       };
+      if (hd) constraints.frameRate = { ideal: 30, max: 30 };
+      if (preferNative) {
+        if (navigator.mediaDevices?.getSupportedConstraints?.().resizeMode) {
+          constraints.resizeMode = { ideal: 'none' };
+        }
+      } else {
+        constraints.aspectRatio = { ideal: landscape ? 16 / 9 : 9 / 16 };
+      }
+      return constraints;
     }
 
     function updateCameraRatioStat() {
-      const vw = previewVideo.videoWidth;
-      const vh = previewVideo.videoHeight;
-      if (!vw || !vh) {
-        cameraRatioStat.textContent = settings.orientation === 'landscape' ? '横屏 16:9' : '竖屏 9:16';
+      const width = stream ? previewVideo.videoWidth : 0;
+      const height = stream ? previewVideo.videoHeight : 0;
+      if (!width || !height) {
+        cameraRatioStat.textContent = cameraPending ? '正在调整取景…' : '等待取景';
         return;
       }
-      const forcedLandscape = settings.orientation === 'portrait' && vw > vh;
-      cameraRatioStat.textContent = forcedLandscape
-        ? `实采 ${vw}×${vh} (浏览器输出横屏)`
-        : `实采 ${vw}×${vh}`;
+      const actual = width === height ? '方形' : width > height ? '横屏' : '竖屏';
+      const ratio = manualAspect();
+      const crop = ratio && Math.abs((width / height) / ratio - 1) >= 0.015;
+      cameraRatioStat.textContent = '实采 ' + width + '×' + height + (crop ? ' · 将裁切' : ' · ' + actual);
     }
     previewVideo.addEventListener('resize', updateCameraRatioStat);
 
     let cameraRequest = 0;
     let cameraPending = false;
+    let previewProfile = null;
     let noCamera = false;
     let frameWaitCancel = null;
 
@@ -1946,12 +2037,15 @@
     }
 
     function releaseCamera() {
+      takeCanvas?.stop();
+      takeCanvas = null;
       cameraRequest++;
       cameraPending = false;
       btnRetryCamera.disabled = false;
       if (frameWaitCancel) frameWaitCancel();
       const previous = stream;
       stream = null;
+      previewProfile = null;
       previewVideo.pause();
       previewVideo.srcObject = null;
       stopTracks(previous);
@@ -1981,6 +2075,69 @@
       });
     }
 
+    // Draw only the camera pixels. The crop is identical to object-fit: cover in the viewfinder.
+    function canvasVideo(video, ratio, mirror = false) {
+      if (typeof HTMLCanvasElement.prototype.captureStream !== 'function') {
+        throw new Error('浏览器不支持画幅处理');
+      }
+      const width = video.videoWidth;
+      const height = video.videoHeight;
+      if (!width || !height) throw new Error('没有可用的视频画面');
+      const croppedWidth = Math.min(width, height * ratio);
+      const croppedHeight = Math.min(height, width / ratio);
+      const scale = Math.min(1, 1920 / Math.max(croppedWidth, croppedHeight));
+      const even = value => Math.max(2, Math.floor(value / 2) * 2);
+      const canvas = document.createElement('canvas');
+      const units = mirror ? null : ratio > 1 ? [32, 18] : [18, 32];
+      const count = units && Math.floor(Math.min(croppedWidth * scale / units[0], croppedHeight * scale / units[1]));
+      canvas.width = count ? count * units[0] : even(croppedWidth * scale);
+      canvas.height = count ? count * units[1] : even(croppedHeight * scale);
+      const context = canvas.getContext('2d', { alpha: false });
+      if (!context) throw new Error('无法绘制视频画面');
+      if (mirror) context.setTransform(-1, 0, 0, 1, canvas.width, 0);
+      const capture = canvas.captureStream(30);
+      const track = capture.getVideoTracks()[0];
+      if (!track) throw new Error('未生成视频轨道');
+      const supportsVideoFrames = typeof video.requestVideoFrameCallback === 'function';
+      let frame = null;
+      let stopped = false;
+      const draw = () => {
+        if (stopped) return;
+        if (video.readyState >= 2 && video.videoWidth && video.videoHeight) {
+          const w = video.videoWidth;
+          const h = video.videoHeight;
+          const sw = Math.min(w, h * ratio);
+          const sh = Math.min(h, w / ratio);
+          context.drawImage(video, (w - sw) / 2, (h - sh) / 2, sw, sh, 0, 0, canvas.width, canvas.height);
+        }
+        frame = supportsVideoFrames ? video.requestVideoFrameCallback(draw) : requestAnimationFrame(draw);
+      };
+      draw();
+      return {
+        track,
+        stop() {
+          stopped = true;
+          if (supportsVideoFrames) video.cancelVideoFrameCallback(frame);
+          else cancelAnimationFrame(frame);
+          track.stop();
+        }
+      };
+    }
+
+    function manualAspect() {
+      if (settings.framingMode === 'auto') return null;
+      return settings.framingMode === 'landscape' ? 16 / 9 : 9 / 16;
+    }
+
+    let takeCanvas = null;
+    function captureForTake() {
+      const ratio = manualAspect();
+      const actual = previewVideo.videoWidth / previewVideo.videoHeight;
+      if (!ratio || Math.abs(actual / ratio - 1) < 0.015) return stream;
+      takeCanvas = canvasVideo(previewVideo, ratio);
+      return new MediaStream([takeCanvas.track, ...stream.getAudioTracks()]);
+    }
+
     function usableTrack(media, kind) {
       return media?.getTracks().some(track =>
         track.kind === kind && track.readyState === 'live' && track.enabled && !track.muted
@@ -1999,18 +2156,22 @@
 
       releaseCamera();
       const request = cameraRequest;
+      const direction = targetDirection();
+      const preferNative = settings.framingMode === 'auto';
+      previewProfile = { direction, preferNative };
       cameraPending = true;
       btnRetryCamera.disabled = true;
+      updateCameraRatioStat();
       let granted;
       const audio = withAudio ? { echoCancellation: true, noiseSuppression: true, autoGainControl: true } : false;
       try {
         try {
-          granted = await navigator.mediaDevices.getUserMedia({ video: getVideoConstraints(settings.orientation, 'hd'), audio });
+          granted = await navigator.mediaDevices.getUserMedia({ video: getVideoConstraints(direction, preferNative), audio });
         } catch (error) {
           if (request !== cameraRequest) return false;
           if (error.name !== 'OverconstrainedError' && error.name !== 'ConstraintNotSatisfiedError') throw error;
           try {
-            granted = await navigator.mediaDevices.getUserMedia({ video: getVideoConstraints(settings.orientation, 'sd'), audio });
+            granted = await navigator.mediaDevices.getUserMedia({ video: getVideoConstraints(direction, preferNative, false), audio });
           } catch (sdError) {
             if (request !== cameraRequest) return false;
             if (sdError.name !== 'OverconstrainedError' && sdError.name !== 'ConstraintNotSatisfiedError') throw sdError;
@@ -2045,6 +2206,7 @@
         if (request === cameraRequest) {
           cameraPending = false;
           btnRetryCamera.disabled = false;
+          if (!withAudio && stream) syncPreviewFraming();
         }
       }
     }
@@ -2073,7 +2235,9 @@
     }
 
     function startPreview() {
-      if (recState === 'idle' && !noCamera && !document.hidden && !cameraPending && !stream) initCamera();
+      if (recState !== 'idle' || noCamera || document.hidden || cameraPending) return;
+      if (stream) syncPreviewFraming();
+      else initCamera();
     }
 
     btnRetryCamera.addEventListener('click', () => {
@@ -2094,8 +2258,9 @@
     }
 
     function getDefaultWindowRect() {
-      const width = clamp(Math.round(innerWidth * 0.9), 220, 410);
-      const height = clamp(Math.round(innerHeight * 0.27), 104, 260);
+      const landscape = landscapeViewport.matches;
+      const width = landscape ? clamp(Math.round(innerWidth * 0.62), 300, 560) : clamp(Math.round(innerWidth * 0.9), 220, 410);
+      const height = landscape ? clamp(Math.round(innerHeight * 0.40), 122, 220) : clamp(Math.round(innerHeight * 0.27), 104, 260);
       const top = $('topHud').getBoundingClientRect().bottom;
       return { x: (innerWidth - width) / 2, y: Math.max(54, top + 10), width, height };
     }
@@ -2110,19 +2275,18 @@
       const height = clamp(Math.round(rect.height), Math.min(104, maxH), maxH);
       const x = clamp(Math.round(rect.x), 8, Math.max(8, vw - width - 8));
       const y = clamp(Math.round(rect.y), 10, Math.max(10, vh - height - dock));
-      const dimensionsChanged = !tpWindow.style.width || settings.winRect?.width !== width || settings.winRect?.height !== height;
+      const dimensionsChanged = tpWindow.style.width !== width + 'px' || tpWindow.style.height !== height + 'px';
       tpWindow.style.left = x + 'px';
       tpWindow.style.top = y + 'px';
       tpWindow.style.width = width + 'px';
       tpWindow.style.height = height + 'px';
-      settings.winRect = { x, y, width, height };
+      settings[windowRectKey()] = { x, y, width, height };
       if (persist) saveSettings();
       if (dimensionsChanged) recalcScrollBounds();
     }
 
     function initWindowRect() {
-      const rect = settings.winRect || getDefaultWindowRect();
-      applyWindowRect(rect, false);
+      applyWindowRect(getWindowRect());
     }
 
     let activeGesture = null;
@@ -2153,7 +2317,8 @@
       }
     }
 
-    const getWindowRect = () => settings.winRect || getDefaultWindowRect();
+    const windowRectKey = () => landscapeViewport.matches ? 'landscapeWinRect' : 'winRect';
+    const getWindowRect = () => settings[windowRectKey()] || getDefaultWindowRect();
     const moveWindow = (rect, dx, dy) => applyWindowRect({ ...rect, x: rect.x + dx, y: rect.y + dy });
     const resizeWindow = (rect, dx, dy) => applyWindowRect({
       ...rect,
@@ -2181,7 +2346,7 @@
     }
 
     function fitWindowOnResize() {
-      if (settings.winRect) applyWindowRect(settings.winRect, false);
+      applyWindowRect(getWindowRect());
     }
     window.addEventListener('resize', fitWindowOnResize);
     if (typeof ResizeObserver === 'function') new ResizeObserver(fitWindowOnResize).observe($('bottomDock'));
@@ -2559,11 +2724,10 @@
     function applyAppearance() {
       const opPct = clamp(settings.opacity, 0, 90);
       const opFloat = opPct / 100;
-      // Ease blur from 0px at 0% opacity up to 16px at >=20% opacity
-      const blurPx = opPct <= 0 ? 0 : Math.min(16, (opPct / 20) * 16);
-      const borderAlpha = opPct === 0 ? 0.12 : 0.16;
-      const shadowAlpha = (opFloat / 0.56) * 0.45;
-      const highlightAlpha = opPct === 0 ? 0.06 : 0.12;
+      const blurPx = Math.min(11, opPct * 0.42);
+      const borderAlpha = opPct === 0 ? 0.12 : 0.25;
+      const shadowAlpha = opFloat * 0.56;
+      const highlightAlpha = Math.min(0.17, opFloat * 0.38);
 
       document.documentElement.style.setProperty('--tp-opacity', opFloat.toFixed(2));
       document.documentElement.style.setProperty('--tp-blur', `${blurPx.toFixed(1)}px`);
@@ -2585,35 +2749,66 @@
     }
 
     function applyOrientationUI() {
-      const isLand = settings.orientation === 'landscape';
-      btnRatio.textContent = isLand ? '横屏' : '竖屏';
-      btnOptPortrait.classList.toggle('active', !isLand);
-      btnOptPortrait.setAttribute('aria-pressed', String(!isLand));
-      btnOptLandscape.classList.toggle('active', isLand);
-      btnOptLandscape.setAttribute('aria-pressed', String(isLand));
+      const mode = settings.framingMode;
+      document.body.dataset.framing = mode;
       updateCameraRatioStat();
+      const name = targetDirection() === 'landscape' ? '横屏' : '竖屏';
+      btnRatio.textContent = mode === 'auto' ? '自动 · ' + name : name;
+      for (const [button, option] of [[btnOptAuto, 'auto'], [btnOptPortrait, 'portrait'], [btnOptLandscape, 'landscape']]) {
+        const selected = mode === option;
+        button.classList.toggle('active', selected);
+        button.setAttribute('aria-pressed', String(selected));
+      }
     }
 
-    function setOrientation(nextOrientation) {
-      const normalized = nextOrientation === 'landscape' ? 'landscape' : 'portrait';
+    function syncPreviewFraming() {
+      if (recState !== 'idle' || noCamera || document.hidden || cameraPending || !stream) return;
+      if (previewProfile?.direction !== targetDirection() || previewProfile.preferNative !== (settings.framingMode === 'auto')) {
+        initCamera();
+      }
+    }
+
+    function setFramingMode(mode) {
       if (recState !== 'idle') {
-        showToast('录制中暂不支持切换横竖屏');
+        showToast('请结束本段录像后再调整画幅');
         return;
       }
-      if (settings.orientation === normalized) return;
-      stopRehearsal();
-      settings.orientation = normalized;
+      if (settings.framingMode === mode) return;
+      settings.framingMode = mode;
       saveSettings();
       applyOrientationUI();
-      showToast(normalized === 'landscape' ? '已切换为横屏 16:9 取景' : '已切换为竖屏 9:16 取景');
-      if (!noCamera) initCamera(false);
+      syncPreviewFraming();
     }
 
+    let lastScreenDirection = screenDirection();
+    let rotationTimer = null;
+    function syncScreenDirection() {
+      const direction = screenDirection();
+      if (direction === lastScreenDirection) return;
+      lastScreenDirection = direction;
+      applyOrientationUI();
+      if (recState === 'preparing' || recState === 'countdown') {
+        if (direction !== takeScreenDirection) cancelCountdown('屏幕方向已变化，请重新开拍');
+      } else if (['starting', 'recording', 'paused'].includes(recState)) {
+        if (direction !== takeScreenDirection) stopRecording('屏幕方向已变化，已结束本段录像');
+      } else {
+        syncPreviewFraming();
+      }
+    }
+
+    function scheduleScreenDirectionSync() {
+      clearTimeout(rotationTimer);
+      rotationTimer = setTimeout(syncScreenDirection, 200);
+    }
+    if (landscapeViewport.addEventListener) landscapeViewport.addEventListener('change', scheduleScreenDirectionSync);
+    else landscapeViewport.addListener(scheduleScreenDirectionSync);
+
     btnRatio.addEventListener('click', () => {
-      setOrientation(settings.orientation === 'landscape' ? 'portrait' : 'landscape');
+      setFramingMode(targetDirection() === 'landscape' ? 'portrait' : 'landscape');
     });
-    btnOptPortrait.addEventListener('click', () => setOrientation('portrait'));
-    btnOptLandscape.addEventListener('click', () => setOrientation('landscape'));
+    btnOptAuto.addEventListener('click', () => setFramingMode('auto'));
+    btnOptPortrait.addEventListener('click', () => setFramingMode('portrait'));
+    btnOptLandscape.addEventListener('click', () => setFramingMode('landscape'));
 
     btnSpeedDown.addEventListener('click', () => applySpeed(settings.speed - 4));
     btnSpeedUp.addEventListener('click', () => applySpeed(settings.speed + 4));
@@ -2711,7 +2906,7 @@
     let wakePending = null;
 
     function needsWakeLock() {
-      return !document.hidden && (isRehearsing || ['preparing', 'countdown', 'starting', 'recording', 'paused'].includes(recState));
+      return !document.hidden && (isRehearsing || flipJob || ['preparing', 'countdown', 'starting', 'recording', 'paused'].includes(recState));
     }
 
     async function requestWakeLock() {
@@ -2991,6 +3186,19 @@
       ''
     ];
 
+    function supportsRecordingMime(mime) {
+      if (!mime || typeof MediaRecorder.isTypeSupported !== 'function') return true;
+      try { return MediaRecorder.isTypeSupported(mime); } catch (_) { return false; }
+    }
+
+    function recorderOptions(mimeType) {
+      return mimeType ? { mimeType, videoBitsPerSecond: 4500000 } : { videoBitsPerSecond: 4500000 };
+    }
+
+    function durationOutlier(mediaMs, expectedMs) {
+      return expectedMs > 0 && mediaMs > expectedMs + Math.max(4000, expectedMs * 0.4);
+    }
+
     async function identifyVideo(blob) {
       const bytes = new Uint8Array(await blob.slice(0, 12).arrayBuffer());
       if (bytes[0] === 0x1a && bytes[1] === 0x45 && bytes[2] === 0xdf && bytes[3] === 0xa3) {
@@ -3105,26 +3313,98 @@
           pos = end;
         }
       }
-      const handlers = new Set();
+      const tracks = new Map();
+      const defaults = new Map();
+      const fragments = [];
       let hasMedia = false;
+      const readNumber = async (box, offset, width = 4) => {
+        if (box.data + offset + width > box.end) throw new Error('MP4 字段不完整');
+        return uint(await reader.read(box.data + offset, width));
+      };
+      const version = box => readNumber(box, 0, 1);
+      const flags = box => readNumber(box, 1, 3);
+
       for await (const box of boxes(0, blob.size)) {
         if (box.type === 'mdat' && box.end > box.data) hasMedia = true;
+        if (box.type === 'moof') fragments.push(box);
         if (box.type !== 'moov') continue;
-        for await (const track of boxes(box.data, box.end)) {
-          if (track.type !== 'trak') continue;
-          for await (const media of boxes(track.data, track.end)) {
-            if (media.type !== 'mdia') continue;
-            for await (const field of boxes(media.data, media.end)) {
+        for await (const item of boxes(box.data, box.end)) {
+          if (item.type === 'mvex') {
+            for await (const field of boxes(item.data, item.end)) {
+              if (field.type === 'trex') defaults.set(await readNumber(field, 4), await readNumber(field, 12));
+            }
+          }
+          if (item.type !== 'trak') continue;
+          const track = { end: 0 };
+          for await (const child of boxes(item.data, item.end)) {
+            if (child.type === 'tkhd') {
+              track.id = await readNumber(child, await version(child) === 1 ? 20 : 12);
+            }
+            if (child.type !== 'mdia') continue;
+            for await (const field of boxes(child.data, child.end)) {
               if (field.type === 'hdlr' && field.end - field.data >= 12) {
-                handlers.add(String.fromCharCode(...await reader.read(field.data + 8, 4)));
-                break;
+                track.handler = String.fromCharCode(...await reader.read(field.data + 8, 4));
+              }
+              if (field.type === 'mdhd') {
+                const wide = await version(field) === 1;
+                const scaleAt = wide ? 20 : 12;
+                track.timescale = await readNumber(field, scaleAt);
+                const width = wide ? 8 : 4;
+                if (field.data + scaleAt + 4 + width > field.end) throw new Error('MP4 mdhd 不完整');
+                const bytes = await reader.read(field.data + scaleAt + 4, width);
+                track.duration = bytes.every(byte => byte === 255) ? 0 : uint(bytes);
               }
             }
           }
+          if (track.id && track.handler) tracks.set(track.id, track);
         }
       }
-      if (!hasMedia || !handlers.has('vide')) throw new Error('MP4 缺少有效视频数据');
-      return { hasAudio: handlers.has('soun') };
+      for (const fragment of fragments) {
+        for await (const traf of boxes(fragment.data, fragment.end)) {
+          if (traf.type !== 'traf') continue;
+          let id, base, defaultDuration;
+          const runs = [];
+          for await (const field of boxes(traf.data, traf.end)) {
+            if (field.type === 'tfhd') {
+              id = await readNumber(field, 4);
+              const bits = await flags(field);
+              if (bits & 8) {
+                const offset = 8 + (bits & 1 ? 8 : 0) + (bits & 2 ? 4 : 0);
+                defaultDuration = await readNumber(field, offset);
+              }
+            }
+            if (field.type === 'tfdt') base = await readNumber(field, 4, await version(field) === 1 ? 8 : 4);
+            if (field.type === 'trun') runs.push(field);
+          }
+          const track = tracks.get(id);
+          if (!track) continue;
+          let end = base ?? track.end;
+          for (const run of runs) {
+            const bits = await flags(run);
+            const count = await readNumber(run, 4);
+            if (!(bits & 0x100)) {
+              end += count * (defaultDuration ?? defaults.get(id) ?? 0);
+              continue;
+            }
+            const offset = 8 + (bits & 1 ? 4 : 0) + (bits & 4 ? 4 : 0);
+            const stride = 4 + [0x200, 0x400, 0x800].filter(mask => bits & mask).length * 4;
+            if (offset + count * stride > run.end - run.data) throw new Error('MP4 样本表不完整');
+            for (let i = 0; i < count; i++) end += await readNumber(run, offset + i * stride);
+          }
+          track.end = Math.max(track.end, end);
+        }
+      }
+
+      const hasAudio = [...tracks.values()].some(track => track.handler === 'soun');
+      if (!hasMedia || ![...tracks.values()].some(track => track.handler === 'vide')) {
+        throw new Error('MP4 缺少有效视频数据');
+      }
+      const endFor = handler => Math.max(0, ...[...tracks.values()].filter(track =>
+        track.handler === handler && track.timescale > 0
+      ).map(track => Math.max(track.end, track.duration || 0) / track.timescale * 1000));
+      const videoEnd = endFor('vide');
+      const audioEnd = endFor('soun');
+      return { hasAudio, videoTailMissing: videoEnd > 0 && audioEnd - videoEnd > 1200 };
     }
 
     const WEBM_SEGMENT_IDS = new Set([
@@ -3282,14 +3562,22 @@
         (lastTick - origin) * tickMs <= elapsedMs + Math.max(1500, elapsedMs * 0.25);
       if (!absurdOrigin) origin = 0;
 
-      const durationMs = Math.max(...timed.map(track => {
+      const trackEnds = timed.map(track => {
         const deltas = [...track.deltas].sort((a, b) => a - b);
         const cadenceMs = (deltas[Math.floor(deltas.length / 2)] || 0) * tickMs;
         const tailMs = track.lastDuration * tickMs || track.lastOpusMs ||
           (track.defaultNs || 0) / 1000000 || cadenceMs || 1000 / 30;
-        return (track.last - origin) * tickMs + tailMs - ((track.delayNs || 0) + track.discardNs) / 1000000;
-      }));
+        return {
+          type: track.type,
+          end: (track.last - origin) * tickMs + tailMs - ((track.delayNs || 0) + track.discardNs) / 1000000
+        };
+      });
+      const audioEnd = Math.max(0, ...trackEnds.filter(track => track.type === 2).map(track => track.end));
+      const videoEnd = Math.max(0, ...trackEnds.filter(track => track.type === 1).map(track => track.end));
+      const durationMs = Math.max(audioEnd, videoEnd);
       if (!Number.isFinite(durationMs) || durationMs <= 0) throw new Error('WebM 时长无效');
+      if (durationOutlier(durationMs, elapsedMs)) throw new Error('WebM 时间轴与实际录制时长严重不符');
+      const trackStatus = { hasAudio: audioEnd > 0, videoTailMissing: audioEnd - videoEnd > 1200 };
 
       const edits = [];
       const replace = (start, end, bytes) => edits.push({ start, end, bytes });
@@ -3316,7 +3604,7 @@
           return Math.min(100, (deltas[Math.floor(deltas.length / 2)] || 0) * tickMs);
         }));
         if (!origin && oldMs > 0 && Math.abs(oldMs - durationMs) <= tolerance) {
-          return { blob, durationMs: oldMs, hasAudio: timed.some(track => track.type === 2) };
+          return { blob, durationMs: oldMs, ...trackStatus };
         }
         replace(durationField.data, durationField.end, value);
       } else {
@@ -3379,7 +3667,7 @@
         cursor = edit.end;
       }
       parts.push(blob.slice(cursor));
-      return { blob: new Blob(parts, { type: 'video/webm' }), durationMs, hasAudio: timed.some(track => track.type === 2) };
+      return { blob: new Blob(parts, { type: 'video/webm' }), durationMs, ...trackStatus };
     }
 
     function updateDockForState() {
@@ -3434,6 +3722,31 @@
     let sharePending = false;
     let reviewInfo = null;
     let takeGeneration = 0;
+    let takeScreenDirection = null;
+    let stopFrameMonitor = null;
+
+    function watchCameraFrames() {
+      if (typeof previewVideo.requestVideoFrameCallback !== 'function') return;
+      let lastFrame = performance.now();
+      let frameId;
+      const frame = () => {
+        lastFrame = performance.now();
+        frameId = previewVideo.requestVideoFrameCallback(frame);
+      };
+      frameId = previewVideo.requestVideoFrameCallback(frame);
+      const timer = setInterval(() => {
+        if (recState !== 'recording') {
+          lastFrame = performance.now();
+        } else if (performance.now() - lastFrame > 1800) {
+          stopRecording('相机画面停止更新，已结束并保留当前片段');
+        }
+      }, 300);
+      stopFrameMonitor = () => {
+        previewVideo.cancelVideoFrameCallback(frameId);
+        clearInterval(timer);
+        stopFrameMonitor = null;
+      };
+    }
 
     function updateRecTimerLoop() {
       timerRafId = null;
@@ -3465,6 +3778,7 @@
         return;
       }
       const generation = ++takeGeneration;
+      takeScreenDirection = screenDirection();
       recState = 'preparing';
       stopRehearsal();
       closeSheets();
@@ -3529,8 +3843,20 @@
     });
 
     function startActualRecording() {
+      if (screenDirection() !== takeScreenDirection) {
+        cancelCountdown('屏幕方向已变化，请重新开拍');
+        return;
+      }
       if (document.hidden || !usableTrack(stream, 'video') || !usableTrack(stream, 'audio')) {
         cancelCountdown('摄像头或麦克风未就绪，请重试');
+        return;
+      }
+      let input;
+      try {
+        input = captureForTake();
+      } catch (error) {
+        console.warn('Capture framing:', error);
+        cancelCountdown('此浏览器无法输出该画幅，请在设置选择「跟随屏幕」');
         return;
       }
       recState = 'starting';
@@ -3538,17 +3864,13 @@
       btnShutter.focus();
       activeRecordedMs = 0;
 
-      const candidates = MIME_CANDIDATES.filter(mime => {
-        if (!mime || typeof MediaRecorder.isTypeSupported !== 'function') return true;
-        try { return MediaRecorder.isTypeSupported(mime); } catch (_) { return false; }
-      });
+      const candidates = MIME_CANDIDATES.filter(supportsRecordingMime);
       const attempt = () => {
         while (candidates.length && recState === 'starting') {
           const mimeType = candidates.shift();
           let recorder;
           try {
-            const options = mimeType ? { mimeType, videoBitsPerSecond: 4500000 } : { videoBitsPerSecond: 4500000 };
-            recorder = new MediaRecorder(stream, options);
+            recorder = new MediaRecorder(input, recorderOptions(mimeType));
           } catch (_) {
             continue;
           }
@@ -3564,6 +3886,7 @@
             updateDockForState();
             recTimerText.textContent = '00:00';
             timerRafId = requestAnimationFrame(updateRecTimerLoop);
+            watchCameraFrames();
             beginScrollEngine(true);
           };
           recorder.ondataavailable = (event) => {
@@ -3661,6 +3984,7 @@
     function enterFinalizing() {
       if (recState === 'recording') activeRecordedMs += performance.now() - activeSegmentStart;
       recState = 'finalizing';
+      stopFrameMonitor?.();
       stopRecTimer();
       stopScrollLoop();
       stopVoiceRecognition();
@@ -3711,26 +4035,36 @@
         if (!stillCurrent()) return;
         let blob = new Blob([raw], { type: 'video/' + ext });
         let durationMs;
+        let durationUnverified = false;
+        let incomplete = false;
         if (ext === 'webm') {
           try {
             const result = await fixWebmDuration(blob, activeRecordedMs);
             blob = result.blob;
             durationMs = result.durationMs;
-            if (!result.hasAudio) take.notice = '此片段没有检测到编码后的音轨';
+            if (!result.hasAudio || result.videoTailMissing) {
+              incomplete = true;
+              take.notice ||= result.hasAudio ? '视频画面比声音更早结束，请检查尾部' : '此片段没有检测到编码后的音轨';
+            }
           } catch (error) {
+            durationUnverified = true;
             console.warn('WebM duration:', error);
             take.notice = 'WebM 时长校验失败，可尝试下载原始录像';
           }
         } else {
           try {
             const result = await inspectMp4(blob);
-            if (!result.hasAudio) take.notice = '此片段没有检测到编码后的音轨';
+            if (!result.hasAudio || result.videoTailMissing) {
+              incomplete = true;
+              take.notice ||= result.hasAudio ? '视频画面比声音更早结束，请检查尾部' : '此片段没有检测到编码后的音轨';
+            }
           } catch (error) {
+            incomplete = true;
             console.warn('MP4 validation:', error);
             take.notice = 'MP4 文件完整性校验失败，请先回看并检查画面和声音';
           }
         }
-        if (stillCurrent()) openReviewScreen(blob, ext, durationMs, take.notice);
+        if (stillCurrent()) openReviewScreen(blob, ext, durationMs, take.notice, activeRecordedMs, durationUnverified, incomplete);
       } catch (error) {
         if (!stillCurrent()) return;
         console.warn('Recording export:', error);
@@ -3741,7 +4075,236 @@
       }
     }
 
+    let originalReview = null;
+    let mirroredReview = null;
+    let isMirroredReview = false;
+    let flipJob = null;
+
+    function syncFlipControls() {
+      const busy = Boolean(flipJob);
+      btnFlipVideo.textContent = busy ? '取消翻转' : isMirroredReview ? '恢复原方向' : '左右翻转';
+      btnFlipVideo.setAttribute('aria-pressed', String(isMirroredReview));
+      btnRetake.disabled = busy || sharePending;
+      const reviewHasIssue = Boolean(reviewInfo?.incomplete || reviewInfo?.invalidTimeline);
+      btnSaveAlbum.disabled = busy || sharePending || reviewHasIssue;
+      btnFlipVideo.disabled = sharePending || reviewHasIssue;
+      if (busy) btnDownload.removeAttribute('href');
+      else if (reviewFile) btnDownload.href = currentVideoUrl;
+    }
+
+    // Decode the original once and encode the mirrored pixels with the existing audio.
+    // Playback is local and runs in real time. Keep the original available on every failure.
+    function encodeMirroredVideo(file, signal, onProgress) {
+      const AudioEngine = window.AudioContext || window.webkitAudioContext;
+      if (!AudioEngine || typeof HTMLCanvasElement.prototype.captureStream !== 'function') {
+        return Promise.reject(new Error('浏览器不支持翻转后导出'));
+      }
+      return new Promise((resolve, reject) => {
+        const video = document.createElement('video');
+        video.playsInline = true;
+        video.preload = 'auto';
+        video.className = 'flip-source';
+        video.setAttribute('aria-hidden', 'true');
+        document.body.appendChild(video);
+        const url = URL.createObjectURL(file);
+        let audio;
+        let outputAudio;
+        let picture;
+        let recorder;
+        let timer;
+        let finished = false;
+        let bytes = 0;
+        const chunks = [];
+
+        const cleanup = () => {
+          clearTimeout(timer);
+          signal.removeEventListener('abort', cancel);
+          video.onerror = video.onended = video.ontimeupdate = null;
+          if (recorder) {
+            recorder.onstart = recorder.ondataavailable = recorder.onstop = recorder.onerror = null;
+            try { if (recorder.state !== 'inactive') recorder.stop(); } catch (_) {}
+          }
+          picture?.stop();
+          stopTracks(outputAudio?.stream);
+          video.pause();
+          video.removeAttribute('src');
+          video.load();
+          video.remove();
+          URL.revokeObjectURL(url);
+          if (audio) audio.close().catch(() => {});
+        };
+        const fail = error => {
+          if (finished) return;
+          finished = true;
+          cleanup();
+          reject(error);
+        };
+        const cancel = () => fail(new DOMException('已取消翻转', 'AbortError'));
+        signal.addEventListener('abort', cancel, { once: true });
+        timer = setTimeout(() => fail(new Error('视频无法开始翻转')), 10000);
+
+        async function start() {
+          audio = new AudioEngine();
+          outputAudio = audio.createMediaStreamDestination();
+          audio.createMediaElementSource(video).connect(outputAudio);
+          video.src = url;
+          video.onerror = () => fail(new Error('原视频无法读取'));
+          // Invoke both inside the originating click, before transient activation expires.
+          await Promise.all([audio.resume(), video.play()]);
+          if (finished) return;
+          if (!Number.isFinite(video.duration) || video.duration <= 0) throw new Error('无法读取原视频时长');
+
+          const durationMs = video.duration * 1000;
+          video.pause();
+          picture = canvasVideo(video, video.videoWidth / video.videoHeight, true);
+          const input = new MediaStream([picture.track, ...outputAudio.stream.getAudioTracks()]);
+          const candidates = MIME_CANDIDATES.filter(supportsRecordingMime);
+          function tryNextEncoder() {
+            if (finished) return;
+            if (video.ended) {
+              fail(new Error('浏览器还未开始编码，原视频已播完'));
+              return;
+            }
+            while (candidates.length) {
+              const mimeType = candidates.shift();
+              try {
+                recorder = new MediaRecorder(input, recorderOptions(mimeType));
+              } catch (_) {
+                continue;
+              }
+              const attempt = recorder;
+              if (video.currentTime > 0) video.currentTime = 0;
+              let started = false;
+              const retry = () => {
+                clearTimeout(timer);
+                video.pause();
+                attempt.onstart = attempt.ondataavailable = attempt.onstop = attempt.onerror = null;
+                try { if (attempt.state !== 'inactive') attempt.stop(); } catch (_) {}
+                chunks.length = 0;
+                bytes = 0;
+                tryNextEncoder();
+              };
+              attempt.onstart = () => {
+                started = true;
+                clearTimeout(timer);
+                timer = setTimeout(() => fail(new Error('翻转超时')), durationMs + 10000);
+              };
+              attempt.ondataavailable = event => {
+                if (!event.data.size) return;
+                chunks.push(event.data);
+                bytes += event.data.size;
+                if (bytes >= MAX_RECORDING_BYTES) fail(new Error('翻转文件达到内存保护阈值'));
+              };
+              attempt.onerror = () => {
+                if (started) fail(new Error('镜像编码失败'));
+                else retry();
+              };
+              attempt.onstop = () => {
+                if (!video.ended || !bytes) {
+                  fail(new Error('翻转输出不完整'));
+                  return;
+                }
+                finished = true;
+                const blob = new Blob(chunks);
+                cleanup();
+                resolve({ blob, durationMs });
+              };
+              try {
+                attempt.start(1000);
+                clearTimeout(timer);
+                timer = setTimeout(retry, 3500);
+                video.play().catch(fail);
+                return;
+              } catch (_) {
+                attempt.onstart = attempt.ondataavailable = attempt.onstop = attempt.onerror = null;
+              }
+            }
+            fail(new Error('浏览器无法编码镜像视频'));
+          }
+          video.ontimeupdate = () => onProgress(Math.min(99, Math.floor(video.currentTime / video.duration * 100)));
+          video.onended = () => {
+            if (!recorder || recorder.state === 'inactive') {
+              fail(new Error('镜像编码已中断'));
+              return;
+            }
+            clearTimeout(timer);
+            timer = setTimeout(() => fail(new Error('镜像文件写入超时')), 5000);
+            recorder.stop();
+          };
+          tryNextEncoder();
+        }
+        start().catch(fail);
+      });
+    }
+
+    btnFlipVideo.addEventListener('click', async () => {
+      if (!originalReview || sharePending) return;
+      if (flipJob) {
+        flipJob.abort();
+        return;
+      }
+
+      if (isMirroredReview || mirroredReview) {
+        isMirroredReview = !isMirroredReview;
+        showReviewFile(isMirroredReview ? mirroredReview : originalReview);
+        syncFlipControls();
+        return;
+      }
+
+      const job = new AbortController();
+      flipJob = job;
+      reviewVideo.pause();
+      flipStatus.textContent = '正在生成镜像成片…';
+      syncFlipControls();
+      requestWakeLock();
+      try {
+        const result = await encodeMirroredVideo(originalReview.file, job.signal, percent => {
+          const step = '正在翻转 ' + Math.floor(percent / 10) * 10 + '%';
+          if (flipStatus.textContent !== step) flipStatus.textContent = step;
+        });
+        if (flipJob !== job || job.signal.aborted) return;
+        const ext = await identifyVideo(result.blob);
+        let blob = new Blob([result.blob], { type: 'video/' + ext });
+        let durationMs = result.durationMs;
+        if (ext === 'webm') {
+          const corrected = await fixWebmDuration(blob, durationMs);
+          if (!corrected.hasAudio || corrected.videoTailMissing) throw new Error('镜像成片音画不完整');
+          blob = corrected.blob;
+          durationMs = corrected.durationMs;
+        } else {
+          const checked = await inspectMp4(blob);
+          if (!checked.hasAudio || checked.videoTailMissing) throw new Error('镜像成片音画不完整');
+        }
+        if (flipJob !== job || job.signal.aborted) return;
+        const file = new File([blob], originalReview.file.name.replace(/\.[^.]+$/, '_镜像.' + ext), { type: blob.type });
+        mirroredReview = { file, ext, durationMs };
+        isMirroredReview = true;
+        showReviewFile(mirroredReview);
+      } catch (error) {
+        if (flipJob === job && error.name !== 'AbortError') {
+          console.warn('Mirror export:', error);
+          showToast('镜像成片生成失败，原视频仍可保存', 4200);
+        }
+      } finally {
+        if (flipJob === job) {
+          flipJob = null;
+          flipStatus.textContent = isMirroredReview ? '当前成片已左右翻转' : '';
+          releaseWakeLock();
+          syncFlipControls();
+        }
+      }
+    });
+
     function releaseReviewMedia() {
+      if (flipJob) {
+        flipJob.abort();
+        flipJob = null;
+        releaseWakeLock();
+      }
+      originalReview = null;
+      mirroredReview = null;
+      isMirroredReview = false;
+      flipStatus.textContent = '';
       reviewFile = null;
       reviewInfo = null;
       reviewVideo.pause();
@@ -3752,34 +4315,51 @@
       if (currentVideoUrl) URL.revokeObjectURL(currentVideoUrl);
       currentVideoUrl = '';
       sharePending = false;
-      btnSaveAlbum.disabled = false;
-      btnRetake.disabled = false;
+      syncFlipControls();
       reviewOverlay.classList.remove('visible');
     }
 
-    function openReviewScreen(blob, ext, durationMs, notice) {
-      releaseReviewMedia();
-      const filename = makeTimestampFilename(ext);
-      reviewFile = new File([blob], filename, { type: blob.type });
-      currentVideoUrl = URL.createObjectURL(reviewFile);
-      reviewInfo = { ext, durationMs, sizeMb: (blob.size / (1024 * 1024)).toFixed(1) };
+    function showReviewFile({ file, ext, durationMs, elapsedMs, durationUnverified, incomplete }) {
+      const oldUrl = currentVideoUrl;
+      reviewVideo.pause();
+      reviewFile = file;
+      currentVideoUrl = URL.createObjectURL(file);
+      reviewInfo = { ext, durationMs, elapsedMs, durationUnverified, incomplete, sizeMb: (file.size / (1024 * 1024)).toFixed(1) };
       reviewVideo.src = currentVideoUrl;
-      reviewNotice.textContent = notice || '';
-      btnSaveAlbum.querySelector('span').textContent = ext === 'webm' ? '分享 WebM' : '保存到手机相册';
+      if (oldUrl) URL.revokeObjectURL(oldUrl);
       btnDownload.href = currentVideoUrl;
-      btnDownload.download = filename;
+      btnDownload.download = file.name;
+      btnSaveAlbum.querySelector('span').textContent = ext === 'webm' ? '分享 WebM' : '保存到手机相册';
+      flipStatus.textContent = isMirroredReview ? '当前成片已左右翻转' : '';
+      renderReviewMeta();
+    }
+
+    function openReviewScreen(blob, ext, durationMs, notice, elapsedMs, durationUnverified, incomplete) {
+      releaseReviewMedia();
+      const file = new File([blob], makeTimestampFilename(ext), { type: blob.type });
+      originalReview = { file, ext, durationMs, elapsedMs, durationUnverified, incomplete };
+      showReviewFile(originalReview);
+      reviewNotice.textContent = notice || '';
       reviewOverlay.classList.add('visible');
       recState = 'review';
       updateDockForState();
-      renderReviewMeta();
+      syncFlipControls();
       btnSaveAlbum.focus();
     }
 
     function renderReviewMeta() {
       if (!reviewInfo) return;
-      const { ext, durationMs, sizeMb } = reviewInfo;
+      const { ext, durationMs, elapsedMs, durationUnverified, sizeMb } = reviewInfo;
       const metadataMs = reviewVideo.duration * 1000;
-      const knownMs = durationMs ?? (Number.isFinite(metadataMs) && metadataMs > 0 ? metadataMs : null);
+      const anomalous = Boolean(durationUnverified || durationOutlier(metadataMs, elapsedMs));
+      if (reviewInfo.invalidTimeline !== anomalous) {
+        reviewInfo.invalidTimeline = anomalous;
+        syncFlipControls();
+      }
+      if (anomalous && !reviewNotice.textContent) {
+        reviewNotice.textContent = '时长与本次录像不符，请先检查尾部或下载原始片段';
+      }
+      const knownMs = anomalous ? null : durationMs ?? (Number.isFinite(metadataMs) && metadataMs > 0 ? metadataMs : null);
       const roundedMs = knownMs === null ? null : Math.round(knownMs / 100) * 100;
       const time = roundedMs === null ? '时长待确认' : formatTime(roundedMs) + '.' + (roundedMs % 1000) / 100;
       reviewMeta.textContent = [time, ext.toUpperCase(), sizeMb + ' MB'].join(' · ');
@@ -3788,7 +4368,11 @@
     reviewVideo.addEventListener('loadedmetadata', renderReviewMeta);
     reviewVideo.addEventListener('durationchange', renderReviewMeta);
     reviewVideo.addEventListener('error', () => {
-      if (reviewFile) reviewNotice.textContent ||= '当前浏览器无法回看，可下载文件后尝试播放';
+      if (reviewFile && reviewInfo && reviewVideo.error) {
+        reviewInfo.incomplete = true;
+        reviewNotice.textContent ||= '当前浏览器无法回看，可下载文件后尝试播放';
+        syncFlipControls();
+      }
     });
 
     function makeTimestampFilename(ext) {
@@ -3805,7 +4389,7 @@
 
     btnSaveAlbum.addEventListener('click', () => {
       const file = reviewFile;
-      if (!file || sharePending) return;
+      if (!file || sharePending || flipJob) return;
       const data = { files: [file] };
       let canShare = false;
       try { canShare = typeof navigator.share === 'function' && navigator.canShare?.(data); } catch (_) {}
@@ -3817,8 +4401,7 @@
         // Start sharing in this click, before any await, timer, or media processing.
         const pending = navigator.share(data);
         sharePending = true;
-        btnSaveAlbum.disabled = true;
-        btnRetake.disabled = true;
+        syncFlipControls();
         Promise.resolve(pending).catch(error => {
           if (reviewFile === file && error?.name !== 'AbortError') {
             showToast('系统分享未完成，可点「存为文件」下载文件保存', 4200);
@@ -3826,8 +4409,7 @@
         }).finally(() => {
           if (reviewFile === file) {
             sharePending = false;
-            btnSaveAlbum.disabled = false;
-            btnRetake.disabled = false;
+            syncFlipControls();
           }
         });
       } catch (_) {
@@ -3836,7 +4418,7 @@
     });
 
     btnRetake.addEventListener('click', () => {
-      if (sharePending) return;
+      if (sharePending || flipJob) return;
       releaseReviewMedia();
       recState = 'idle';
       resetScrollToTop();
@@ -3847,24 +4429,28 @@
 
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) {
+        flipJob?.abort();
         stopRehearsal();
         releaseWakeLock();
         if (recState === 'preparing' || recState === 'countdown') cancelCountdown(null, false);
         else if (['starting', 'recording', 'paused'].includes(recState)) stopRecording('页面转入后台，已结束本段录像');
         else if (recState === 'idle') releaseCamera();
       } else {
+        syncScreenDirection();
         startPreview();
         if (recState === 'idle') checkForUpdates(false);
       }
     });
 
     window.addEventListener('pagehide', () => {
+      clearTimeout(rotationTimer);
       takeGeneration++;
       clearInterval(countdownTimer);
       countdownTimer = null;
       countdownOverlay.classList.remove('visible');
       closeSheets();
       stopRehearsal();
+      stopFrameMonitor?.();
       stopRecTimer();
       stopScrollLoop();
       stopVoiceRecognition();
@@ -3881,7 +4467,10 @@
       updateDockForState();
     });
 
-    window.addEventListener('pageshow', startPreview);
+    window.addEventListener('pageshow', () => {
+      syncScreenDirection();
+      startPreview();
+    });
 
     // ---------- Boot ----------
     appVersionLabel.textContent = `v${APP_VERSION}`;

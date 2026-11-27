@@ -30,17 +30,48 @@ async function test() {
     });
     if (useWebKit) await context.grantPermissions(['camera','microphone']);
     await context.addInitScript(({variant,useWebKit}) => {
-      window.r = { calls: [], tracks: [], locks: [], speech: [], sharing: [], urls: [], revoked: [], mode: 'ok' };
+      window.r = { calls: [], videoRequests: [], tracks: [], locks: [], speech: [], sharing: [], urls: [], revoked: [], mode: 'ok' };
       if (variant === 'brokenStorage') {
         localStorage.setItem('tp_pwa_scripts_v1', '[null,{},{"id":"good","body":"正文","title":12}]');
         localStorage.setItem('tp_pwa_settings_v1', '{"speed":"junk","fontSize":"nan","winRect":{"x":1},"voiceFollow":"false"}');
+      }
+      if (variant === 'orientation' && !localStorage.getItem('tp_pwa_settings_v1')) {
+        localStorage.setItem('tp_pwa_settings_v1', '{"orientation":"landscape","speed":38}');
+      }
+      if (variant === 'freeze') {
+        const request = HTMLVideoElement.prototype.requestVideoFrameCallback;
+        if (request) HTMLVideoElement.prototype.requestVideoFrameCallback = function(callback) {
+          return request.call(this,(now, frame) => { if (!r.freezePreview) callback(now,frame); });
+        };
       }
       if (!navigator.mediaDevices) return;
       const orig = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
       navigator.mediaDevices.getUserMedia = async settings => {
         r.calls.push(Boolean(settings.audio));
+        r.videoRequests.push(settings.video);
         if (r.mode === 'denyAll' || (settings.audio && r.mode === 'denyAudio')) throw new DOMException('denied', 'NotAllowedError');
-        const media = await orig(settings);
+        let media = await orig(settings);
+        if (variant.startsWith('framing')) {
+          // Feed the opposite orientation, as a browser can do with native phone axes.
+          const canvas = document.createElement('canvas');
+          canvas.width = r.mode === 'forceLandscape' ? 400 : 240;
+          canvas.height = r.mode === 'forceLandscape' ? 240 : 400;
+          const ctx = canvas.getContext('2d');
+          const controlled = canvas.captureStream(30);
+          const track = controlled.getVideoTracks()[0];
+          const timer = setInterval(() => {
+            if (track.readyState === 'ended') {
+              clearInterval(timer);
+              return;
+            }
+            ctx.fillStyle = '#ee1010';
+            ctx.fillRect(0, 0, canvas.width / 2, canvas.height);
+            ctx.fillStyle = '#1010ee';
+            ctx.fillRect(canvas.width / 2, 0, canvas.width / 2, canvas.height);
+          }, 35);
+          media.getVideoTracks().forEach(source => source.stop());
+          media = new MediaStream([track, ...media.getAudioTracks()]);
+        }
         r.tracks.push(...media.getTracks());
         if (settings.audio && r.mode === 'delay') await new Promise(resolve => window.releaseRequest = resolve);
         if (settings.audio && r.mode === 'noAudioTrack') {
@@ -86,7 +117,7 @@ async function test() {
             return recorder;
           },
           get(target, key) {
-            if (key === 'isTypeSupported' && variant === 'webm') return mime => !mime.includes('mp4') && target.isTypeSupported(mime);
+            if (key === 'isTypeSupported' && ['webm', 'framingWebm'].includes(variant)) return mime => !mime.includes('mp4') && target.isTypeSupported(mime);
             return typeof target[key] === 'function' && key === 'isTypeSupported' ? target[key].bind(target) : target[key];
           }
         });
@@ -172,6 +203,13 @@ async function test() {
     assert.ok(meta.streams.some(track => track.codec_type === 'audio'));
     assert.ok(Math.abs(Number(meta.format.duration) - liveMs / 1000) < (long ? .75 : .6), JSON.stringify({meta,liveMs}));
     audioIsNonSilent(file);
+    if (long) {
+      const duration = Number(meta.format.duration);
+      assert.ok(duration > 28 && duration < 31);
+      const tail = execFileSync('ffmpeg',['-v','error','-ss',String(duration - .75),'-i',file,
+        '-map','0:v:0','-frames:v','3','-f','framemd5','pipe:1'],{encoding:'utf8'});
+      assert.equal(tail.split(/\r?\n/).filter(line=>/^0,/.test(line)).length,3, 'Three video frames decode near the recording tail');
+    }
     await press(p,'btnRetake');
     await preview(p);
     assert.ok(await p.evaluate(() => r.revoked.length === 1 && r.calls.at(-1) === false && r.tracks.filter(t=>t.readyState==='live').map(t=>t.kind).join() === 'video'));
@@ -206,9 +244,9 @@ async function test() {
     assert.equal(await p.locator('.script-card').count(),2);
     await p.keyboard.press('Escape');
     await press(p,'btnSpeedDown');
-    assert.equal(await p.locator('#speedValue').textContent(),'34');
+    assert.equal(await p.locator('#speedValue').textContent(),'26');
     await press(p,'btnSpeedUp');
-    for (const speed of [24,38,62]) {
+    for (const speed of [20,30,62]) {
       await p.locator('[data-speed="'+speed+'"]').click();
       assert.equal(await p.locator('#speedValue').textContent(),String(speed));
     }
@@ -217,6 +255,9 @@ async function test() {
       await p.locator('#'+id).fill(val);
       assert.equal(await p.locator('#'+id).inputValue(), val);
     }
+    await p.locator('#sliderSpeed').fill('10');
+    assert.ok(await p.locator('#btnSpeedDown').isDisabled());
+    await p.locator('#sliderSpeed').fill('110');
     await press(p,'btnResetWindow');
     await press(p,'btnCloseSettings');
     assert.ok(await p.locator('#btnSpeedUp').isDisabled());
@@ -296,7 +337,7 @@ async function test() {
   async function interruption() {
     const {page:p,context,errors} = await pageSetup('brokenStorage');
     await preview(p);
-    assert.equal(await p.locator('#speedValue').textContent(),'38');
+    assert.equal(await p.locator('#speedValue').textContent(),'30');
     assert.equal(await p.locator('#hudScriptTitle').textContent(),'未命名稿件');
     await p.evaluate(()=>r.mode='noAudioTrack');
     await press(p,'btnShutter');
@@ -327,6 +368,157 @@ async function test() {
     await context.close();
   }
 
+  async function frameStall() {
+    const {page:p, context, errors} = await pageSetup('freeze');
+    try {
+      await preview(p);
+      await press(p,'btnShutter');
+      await rec(p);
+      await sleep(600);
+      await p.evaluate(() => r.freezePreview = true);
+      await visible(p,'reviewOverlay');
+      assert.match(await p.locator('#reviewNotice').textContent(), /相机画面停止更新/);
+      assert.ok(await p.evaluate(() => r.tracks.every(track => track.readyState === 'ended')));
+      assert.deepEqual(errors, []);
+      console.log('Camera frame stall ended recording and released tracks: PASS');
+    } finally {
+      await context.close();
+    }
+  }
+
+  async function orientation() {
+    const {page:p, context, errors} = await pageSetup('orientation');
+    try {
+      await preview(p);
+      assert.equal(await p.locator('#btnRatio').textContent(), '自动 · 竖屏');
+      assert.equal(await p.locator('#speedValue').textContent(), '30');
+      await p.locator('#tpDragBar').focus();
+      await p.keyboard.press('ArrowDown');
+      const portraitY = (await p.locator('#tpWindow').boundingBox()).y;
+      const requests = () => p.evaluate(() => r.videoRequests);
+      assert.equal((await requests())[0].aspectRatio, undefined);
+      await p.setViewportSize({width:844,height:390});
+      await wait(p, () => r.videoRequests.length === 2);
+      await preview(p);
+      assert.equal(await p.locator('#btnRatio').textContent(), '自动 · 横屏');
+      assert.equal((await requests())[1].width.ideal, 1920);
+      assert.equal((await requests())[1].aspectRatio, undefined);
+      assert.ok(await p.evaluate(() => r.tracks[0].readyState === 'ended'));
+      const controls = await Promise.all(['#bottomDock','.speed-strip','.shutter-row'].map(id => p.locator(id).boundingBox()));
+      assert.ok(controls[2].x + controls[2].width <= controls[0].x + controls[0].width);
+      assert.ok(controls[1].x + controls[1].width <= controls[2].x);
+      await press(p,'btnSettings');
+      await press(p,'btnOptLandscape');
+      await wait(p, () => r.videoRequests.length === 3);
+      await preview(p);
+      assert.equal((await requests())[2].aspectRatio.ideal, 16 / 9);
+      await press(p,'btnCloseSettings');
+      await p.setViewportSize({width:390,height:844});
+      await sleep(450);
+      assert.equal((await requests()).length, 3);
+      assert.equal(await p.locator('#btnRatio').textContent(), '横屏');
+      assert.equal((await p.locator('#tpWindow').boundingBox()).y, portraitY);
+      await press(p,'btnSettings');
+      await press(p,'btnOptAuto');
+      await wait(p, () => r.videoRequests.length === 4);
+      await preview(p);
+      await press(p,'btnCloseSettings');
+
+      await press(p,'btnShutter');
+      await wait(p, () => document.querySelector('#countdownStatus').textContent === '即将开拍');
+      await p.setViewportSize({width:844,height:390});
+      await visible(p,'countdownOverlay',false);
+      await preview(p);
+      assert.match(await p.locator('#toast').textContent(), /重新开拍/);
+
+      await press(p,'btnShutter');
+      await rec(p);
+      await sleep(700);
+      const beforeStop = (await requests()).length;
+      await p.setViewportSize({width:390,height:844});
+      await visible(p,'reviewOverlay');
+      assert.match(await p.locator('#reviewNotice').textContent(), /屏幕方向已变化/);
+      assert.equal((await requests()).length, beforeStop);
+      assert.ok(await p.evaluate(() => r.tracks.every(track => track.readyState === 'ended')));
+      await press(p,'btnRetake');
+      await preview(p);
+      assert.equal((await requests()).at(-1).height.ideal, 1920);
+      assert.deepEqual(errors, []);
+      console.log('Automatic rotation, manual framing, separate window positions and safe recording rotation: PASS');
+    } finally {
+      await context.close();
+    }
+  }
+
+  async function framing(variant = 'framing') {
+    const {page:p, context, errors} = await pageSetup(variant);
+    async function record() {
+      await preview(p);
+      await press(p,'btnShutter');
+      await rec(p);
+      await sleep(1100);
+      await press(p,'btnShutter');
+      await visible(p,'reviewOverlay');
+      await wait(p, () => document.querySelector('#reviewVideo').readyState >= 1 &&
+        Number.isFinite(document.querySelector('#reviewVideo').duration));
+    }
+    async function download(name) {
+      const [file] = await Promise.all([p.waitForEvent('download'),press(p,'btnDownload')]);
+      const path = name + (file.suggestedFilename().endsWith('.mp4') ? '.mp4' : '.webm');
+      await file.saveAs(path);
+      return path;
+    }
+    function checkPixels(file, mirrored) {
+      const pixels = execFileSync('ffmpeg',['-v','error','-ss','0.4','-i',file,
+        '-vf','format=rgb24,scale=2:1:flags=area','-frames:v','1','-f','rawvideo','pipe:1']);
+      assert.equal(pixels.length, 6);
+      assert.ok(mirrored ? pixels[2] > pixels[0] + 80 : pixels[0] > pixels[2] + 80);
+      assert.ok(mirrored ? pixels[3] > pixels[5] + 80 : pixels[5] > pixels[3] + 80);
+    }
+
+    try {
+      await preview(p);
+      await press(p,'btnRatio');
+      await wait(p, () => r.videoRequests.length >= 2);
+      await preview(p);
+      await record();
+      const original = await download('manual-landscape');
+      const originalMeta = probe(original);
+      const landscape = originalMeta.streams.find(s => s.codec_type === 'video');
+      assert.ok(Math.abs(landscape.width / landscape.height - 16 / 9) < 0.025);
+      checkPixels(original,false);
+      audioIsNonSilent(original);
+
+      await press(p,'btnFlipVideo');
+      await wait(p, () => document.querySelector('#btnFlipVideo').textContent === '取消翻转');
+      await press(p,'btnFlipVideo');
+      await wait(p, () => document.querySelector('#btnFlipVideo').textContent === '左右翻转' &&
+        !document.querySelector('#btnSaveAlbum').disabled);
+      await press(p,'btnFlipVideo');
+      await wait(p, () => document.querySelector('#btnFlipVideo').getAttribute('aria-pressed') === 'true' &&
+        document.querySelector('#btnDownload').download.includes('_镜像'));
+      const mirrored = await download('mirrored-landscape');
+      checkPixels(mirrored,true);
+      audioIsNonSilent(mirrored);
+      assert.ok(Math.abs(Number(probe(mirrored).format.duration) - Number(originalMeta.format.duration)) < 0.35);
+      await press(p,'btnFlipVideo');
+      assert.ok(!(await p.locator('#btnDownload').getAttribute('download')).includes('_镜像'));
+      await press(p,'btnRetake');
+      await preview(p);
+
+      await p.evaluate(() => r.mode = 'forceLandscape');
+      await press(p,'btnRatio');
+      await wait(p, () => document.querySelector('#previewVideo').videoWidth === 400);
+      await record();
+      const portrait = probe(await download('manual-portrait')).streams.find(s => s.codec_type === 'video');
+      assert.ok(Math.abs(portrait.width / portrait.height - 9 / 16) < 0.025);
+      assert.deepEqual(errors, []);
+      console.log('Manual portrait and landscape output, mirror pixels, preserved audio and cancellation: PASS', {landscape,portrait});
+    } finally {
+      await context.close();
+    }
+  }
+
   async function webKitUi() {
     const {page:p,context,errors} = await pageSetup('ui',320,640);
     await visible(p,'cameraFallback');
@@ -353,7 +545,7 @@ async function test() {
   }
 
   try {
-    const cases = { ui:testUi, mp4:()=>recordCase('mp4','mp4'), webm:()=>recordCase('webm','webm',!process.argv.includes('--quick')), failCodec:()=>recordCase('failCodec','webm'), interruption };
+    const cases = { ui:testUi, mp4:()=>recordCase('mp4','mp4'), webm:()=>recordCase('webm','webm',!process.argv.includes('--quick')), failCodec:()=>recordCase('failCodec','webm'), interruption, frameStall, orientation, framing, framingWebm: () => framing('framingWebm') };
     const only = process.argv.find(a => a.startsWith('--case='))?.slice(7);
     if (useWebKit) {
       await webKitUi();
