@@ -464,7 +464,7 @@ async function test() {
   }
 
   async function framing(variant = 'framing') {
-    const {page:p, context, errors} = await pageSetup(variant);
+    const {page:p, context, errors} = await pageSetup(variant,426,904);
     async function record() {
       await preview(p);
       await press(p,'btnShutter');
@@ -486,7 +486,8 @@ async function test() {
       const rgb = execFileSync('ffmpeg',['-v','error','-ss','0.4','-i',file,
         '-vf','format=rgb24','-frames:v','1','-f','rawvideo','pipe:1']);
       assert.equal(rgb.length, width * height * 3);
-      const fit = Math.min(width / sourceWidth, height / sourceHeight);
+      const crop = (width > height) !== (sourceWidth > sourceHeight);
+      const fit = crop ? Math.max(width / sourceWidth, height / sourceHeight) : Math.min(width / sourceWidth, height / sourceHeight);
       const contentW = sourceWidth * fit;
       const contentH = sourceHeight * fit;
       const left = (width - contentW) / 2;
@@ -497,16 +498,19 @@ async function test() {
       };
       for (const x of [.06,.94]) {
         for (const y of [.06,.94]) {
-          const [r,g,b] = pixel(left + x * contentW, top + y * contentH);
-          assert.ok(g > r + 75 && g > b + 75, 'Original corner visible in ' + file);
+          const [r,g,b] = crop ? pixel(x * width,y * height) : pixel(left + x * contentW, top + y * contentH);
+          if (crop) assert.ok(Math.max(r,b) > 110 && g < 75, 'Visible image reaches all four corners of ' + file);
+          else assert.ok(g > r + 75 && g > b + 75, 'Original corner visible in ' + file);
         }
       }
-      const [leftRed, , leftBlue] = pixel(left + contentW * .25, height / 2);
-      const [rightRed, , rightBlue] = pixel(left + contentW * .75, height / 2);
+      const [leftRed, , leftBlue] = pixel(width * .25, height / 2);
+      const [rightRed, , rightBlue] = pixel(width * .75, height / 2);
       assert.ok(mirrored ? leftBlue > leftRed + 80 : leftRed > leftBlue + 80);
       assert.ok(mirrored ? rightRed > rightBlue + 80 : rightBlue > rightRed + 80);
-      assert.ok(pixel(left > 5 ? 2 : width / 2, top > 5 ? 2 : height / 2).every(value => value < 32),
-        'Unfilled frame is black instead of enlarged in ' + file);
+      if (!crop && (left > 5 || top > 5)) {
+        assert.ok(pixel(left > 5 ? 2 : width / 2, top > 5 ? 2 : height / 2).every(value => value < 32),
+          'Matching axis keeps the wider source framing in ' + file);
+      }
       return {width,height};
     }
 
@@ -529,7 +533,18 @@ async function test() {
       const landscapeBox = await p.locator('#previewVideo').boundingBox();
       assert.ok(Math.abs(landscapeBox.width / landscapeBox.height - 16 / 9) < .02);
       assert.equal(await p.locator('#previewVideo').evaluate(video => video.srcObject.id),streamBeforeToggle);
-      assert.equal(await p.locator('#previewVideo').evaluate(video => getComputedStyle(video).objectFit),'contain');
+      assert.equal(await p.locator('#previewVideo').evaluate(video => getComputedStyle(video).objectFit),'cover');
+      const screenshot = 'upright-hold-landscape-' + variant + '.png';
+      await p.locator('#previewVideo').screenshot({path:screenshot});
+      const screenshotSize = probe(screenshot).streams[0];
+      const screenshotPixels = execFileSync('ffmpeg',['-v','error','-i',screenshot,'-frames:v','1','-pix_fmt','rgb24','-f','rawvideo','pipe:1']);
+      const sw = screenshotSize.width, sh = screenshotSize.height;
+      for (const x of [0.12,0.88]) {
+        for (const y of [0.23,0.77]) {
+          const at = 3 * (Math.floor(y * sh) * sw + Math.floor(x * sw));
+          assert.ok(screenshotPixels[at + (x < .5 ? 2 : 0)] > 100, 'Landscape preview fills its sides in portrait Safari-sized viewport');
+        }
+      }
       await record();
       const original = await download('manual-landscape');
       const originalMeta = probe(original);
@@ -562,7 +577,7 @@ async function test() {
       const portrait = checkPixels(await download('manual-portrait'),400,240);
       assert.equal(portrait.width / portrait.height,9 / 16);
       assert.deepEqual(errors, []);
-      console.log('Full camera corners and black padding in default, manual portrait, manual landscape and mirror export: PASS', {landscape,portrait});
+      console.log('Portrait hold produces filled landscape preview, opposite axes fill exports, matching-axis corners and mirror preserved: PASS', {landscape,portrait});
     } finally {
       await context.close();
     }

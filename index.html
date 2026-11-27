@@ -88,9 +88,9 @@
     body[data-framing="landscape"] #previewVideo,
     body[data-framing="portrait"] #previewVideo {
       inset: 50% auto auto 50%;
-      object-fit: contain;
       transform: translate(-50%, -50%) scaleX(-1);
     }
+    #previewVideo[data-fit="cover"] { object-fit: cover; }
     body[data-framing="landscape"] #previewVideo {
       width: min(100vw, 177.7778dvh);
       height: min(100dvh, 56.25vw);
@@ -1611,7 +1611,7 @@
           <button id="btnOptPortrait" class="ratio-seg-btn" type="button" aria-pressed="false">竖屏 9:16</button>
           <button id="btnOptLandscape" class="ratio-seg-btn" type="button" aria-pressed="false">横屏 16:9</button>
         </div>
-        <p id="cameraRatioHint" class="setting-desc">跟随手机时，关闭系统方向锁定再旋转手机。切换比例会保留完整取景，比例不同的空白区域会留黑边。</p>
+        <p id="cameraRatioHint" class="setting-desc">跟随手机时，关闭系统方向锁定再旋转手机。固定画幅时，建议把手机转到对应方向，能拍到更多画面。</p>
       </div>
 
       <div class="setting-card">
@@ -1665,7 +1665,7 @@
       <div class="setting-card">
         <div class="setting-row">
           <span class="setting-label">应用版本</span>
-          <span id="appVersionLabel" class="setting-val">v1.3.1</span>
+          <span id="appVersionLabel" class="setting-val">v1.3.2</span>
         </div>
         <button id="btnCheckUpdate" class="secondary-btn" type="button">检查更新 / 刷新最新版</button>
       </div>
@@ -1711,8 +1711,8 @@
 
     const STORAGE_SCRIPTS_KEY = 'tp_pwa_scripts_v1';
     const STORAGE_SETTINGS_KEY = 'tp_pwa_settings_v1';
-    const APP_VERSION = '1.3.1';
-    const APP_BUILD = '20261127-5';
+    const APP_VERSION = '1.3.2';
+    const APP_BUILD = '20261127-6';
     const SPEED_MIN = 10;
     const SPEED_MAX = 110;
 
@@ -1807,6 +1807,7 @@
 
     const switchVoice = $('switchVoice');
     const cameraRatioStat = $('cameraRatioStat');
+    const cameraRatioHint = $('cameraRatioHint');
     const btnOptAuto = $('btnOptAuto');
     const btnOptPortrait = $('btnOptPortrait');
     const btnOptLandscape = $('btnOptLandscape');
@@ -1993,6 +1994,8 @@
     const landscapeViewport = window.matchMedia('(orientation: landscape)');
     const screenDirection = () => landscapeViewport.matches ? 'landscape' : 'portrait';
     const targetDirection = () => settings.framingMode === 'auto' ? screenDirection() : settings.framingMode;
+    const fillsFrame = (width, height, ratio) =>
+      Boolean(width && height) && (width === height || (width > height) !== (ratio > 1));
 
     function getVideoConstraints() {
       // iOS may change camera format or crop when a width, height or aspect ratio is requested.
@@ -2006,12 +2009,21 @@
     function updateCameraRatioStat() {
       const width = stream ? previewVideo.videoWidth : 0;
       const height = stream ? previewVideo.videoHeight : 0;
+      const ratio = targetAspect();
+      const fill = fillsFrame(width, height, ratio);
+      previewVideo.dataset.fit = fill ? 'cover' : 'contain';
+      if (settings.framingMode === 'auto') {
+        cameraRatioHint.textContent = '关闭系统方向锁定后，转动手机即可切换横竖画幅。';
+      } else if (fill && targetDirection() !== screenDirection()) {
+        cameraRatioHint.textContent = ratio > 1 ? '已裁为横屏。横拿手机可获得更宽的取景。' : '已裁为竖屏。竖拿手机可保留更多画面。';
+      } else {
+        cameraRatioHint.textContent = '当前画幅已固定。要随手机旋转切换，请选「跟随手机」。';
+      }
       if (!width || !height) {
         cameraRatioStat.textContent = cameraPending ? '正在调整取景…' : '等待取景';
         return;
       }
-      const padding = Math.abs((width / height) / targetAspect() - 1) >= 0.015;
-      cameraRatioStat.textContent = '取景 ' + width + '×' + height + (padding ? ' · 留边' : '');
+      cameraRatioStat.textContent = '取景 ' + width + '×' + height + (fill ? ' · 裁切' : width / height === ratio ? '' : ' · 留边');
     }
     previewVideo.addEventListener('resize', updateCameraRatioStat);
 
@@ -2064,7 +2076,7 @@
       });
     }
 
-    // Keep the complete decoded frame, matching object-fit: contain in the viewfinder.
+    // Apply the same centered fit as the viewfinder to the encoded frames.
     function canvasVideo(video, ratio, mirror = false) {
       if (typeof HTMLCanvasElement.prototype.captureStream !== 'function') {
         throw new Error('浏览器不支持画幅处理');
@@ -2072,8 +2084,9 @@
       const width = video.videoWidth;
       const height = video.videoHeight;
       if (!width || !height) throw new Error('没有可用的视频画面');
-      const frameWidth = Math.max(width, height * ratio);
-      const frameHeight = Math.max(height, width / ratio);
+      const size = !mirror && fillsFrame(width, height, ratio) ? Math.min : Math.max;
+      const frameWidth = size(width, height * ratio);
+      const frameHeight = size(height, width / ratio);
       const scale = Math.min(1, 1920 / Math.max(frameWidth, frameHeight));
       const even = value => Math.max(2, Math.floor(value / 2) * 2);
       const canvas = document.createElement('canvas');
@@ -2096,7 +2109,9 @@
         if (video.readyState >= 2 && video.videoWidth && video.videoHeight) {
           const w = video.videoWidth;
           const h = video.videoHeight;
-          const fit = Math.min(canvas.width / w, canvas.height / h);
+          const fit = !mirror && fillsFrame(w, h, ratio)
+            ? Math.max(canvas.width / w, canvas.height / h)
+            : Math.min(canvas.width / w, canvas.height / h);
           const dw = w * fit;
           const dh = h * fit;
           context.fillRect(0, 0, canvas.width, canvas.height);
@@ -2124,7 +2139,8 @@
     function captureForTake() {
       const ratio = targetAspect();
       const actual = previewVideo.videoWidth / previewVideo.videoHeight;
-      if (Math.abs(actual / ratio - 1) < 0.015) return stream;
+      const { width, height } = stream.getVideoTracks()[0].getSettings();
+      if (actual === ratio && (!width || !height || (width > height) === (ratio > 1))) return stream;
       takeCanvas = canvasVideo(previewVideo, ratio);
       return new MediaStream([takeCanvas.track, ...stream.getAudioTracks()]);
     }
@@ -2794,6 +2810,9 @@
     }
     if (landscapeViewport.addEventListener) landscapeViewport.addEventListener('change', scheduleScreenDirectionSync);
     else landscapeViewport.addListener(scheduleScreenDirectionSync);
+    window.addEventListener('resize', scheduleScreenDirectionSync);
+    window.addEventListener('orientationchange', scheduleScreenDirectionSync);
+    screen.orientation?.addEventListener('change', scheduleScreenDirectionSync);
 
     btnRatio.addEventListener('click', () => {
       setFramingMode(targetDirection() === 'landscape' ? 'portrait' : 'landscape');
