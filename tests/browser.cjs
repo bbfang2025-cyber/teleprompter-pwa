@@ -59,7 +59,7 @@ async function test() {
           // Feed the opposite orientation, as a browser can do with native phone axes.
           const canvas = document.createElement('canvas');
           canvas.width = r.mode === 'forceLandscape' ? 400 : 240;
-          canvas.height = r.mode === 'forceLandscape' ? 240 : 400;
+          canvas.height = r.mode === 'forceLandscape' ? 240 : 320;
           const ctx = canvas.getContext('2d');
           const controlled = canvas.captureStream(30);
           const track = controlled.getVideoTracks()[0];
@@ -414,6 +414,9 @@ async function test() {
         }
       }
       checkNativeRequests(await requests());
+      await press(p,'btnSettings');
+      await press(p,'btnOptAuto');
+      await press(p,'btnCloseSettings');
       await p.setViewportSize({width:844,height:390});
       await wait(p, () => document.querySelector('#btnRatio').textContent === '横屏 16:9');
       await preview(p);
@@ -486,7 +489,7 @@ async function test() {
       const rgb = execFileSync('ffmpeg',['-v','error','-ss','0.4','-i',file,
         '-vf','format=rgb24','-frames:v','1','-f','rawvideo','pipe:1']);
       assert.equal(rgb.length, width * height * 3);
-      const crop = (width > height) !== (sourceWidth > sourceHeight);
+      const crop = height > width || sourceWidth <= sourceHeight;
       const fit = crop ? Math.max(width / sourceWidth, height / sourceHeight) : Math.min(width / sourceWidth, height / sourceHeight);
       const contentW = sourceWidth * fit;
       const contentH = sourceHeight * fit;
@@ -514,16 +517,31 @@ async function test() {
       return {width,height};
     }
 
+    async function checkPreviewPixels(name, xs, ys) {
+      const screenshot = name + '-' + variant + '.png';
+      await p.locator('#previewVideo').screenshot({path:screenshot});
+      const {width,height} = probe(screenshot).streams[0];
+      const rgb = execFileSync('ffmpeg',['-v','error','-i',screenshot,'-frames:v','1','-pix_fmt','rgb24','-f','rawvideo','pipe:1']);
+      for (const x of xs) {
+        for (const y of ys) {
+          const at = 3 * (Math.floor(y * height) * width + Math.floor(x * width));
+          assert.ok(rgb[at + (x < .5 ? 2 : 0)] > 80, 'Visible camera pixels reach the edges in ' + screenshot);
+        }
+      }
+    }
+
     try {
       await preview(p);
       const initialStream = await p.locator('#previewVideo').evaluate(video => video.srcObject.id);
       assert.equal(await p.locator('#btnRatio').textContent(),'竖屏 9:16');
       const defaultBox = await p.locator('#previewVideo').boundingBox();
       assert.ok(Math.abs(defaultBox.width / defaultBox.height - 9 / 16) < .02);
-      assert.equal(await p.locator('#previewVideo').evaluate(video => getComputedStyle(video).objectFit),'contain');
+      assert.equal(await p.locator('#btnOptPortrait').getAttribute('aria-pressed'),'true');
+      assert.equal(await p.locator('#previewVideo').evaluate(video => getComputedStyle(video).objectFit),'cover');
+      await checkPreviewPixels('default-portrait',[.027,.973],[.09,.91]);
       await record();
-      const automatic = checkPixels(await download('automatic-portrait'),240,400);
-      assert.equal(automatic.width / automatic.height,9 / 16);
+      const defaultPortrait = checkPixels(await download('default-portrait'),240,320);
+      assert.equal(defaultPortrait.width / defaultPortrait.height,9 / 16);
       await press(p,'btnRetake');
       await preview(p);
       const streamBeforeToggle = await p.locator('#previewVideo').evaluate(video => video.srcObject.id);
@@ -534,23 +552,13 @@ async function test() {
       assert.ok(Math.abs(landscapeBox.width / landscapeBox.height - 16 / 9) < .02);
       assert.equal(await p.locator('#previewVideo').evaluate(video => video.srcObject.id),streamBeforeToggle);
       assert.equal(await p.locator('#previewVideo').evaluate(video => getComputedStyle(video).objectFit),'cover');
-      const screenshot = 'upright-hold-landscape-' + variant + '.png';
-      await p.locator('#previewVideo').screenshot({path:screenshot});
-      const screenshotSize = probe(screenshot).streams[0];
-      const screenshotPixels = execFileSync('ffmpeg',['-v','error','-i',screenshot,'-frames:v','1','-pix_fmt','rgb24','-f','rawvideo','pipe:1']);
-      const sw = screenshotSize.width, sh = screenshotSize.height;
-      for (const x of [0.12,0.88]) {
-        for (const y of [0.23,0.77]) {
-          const at = 3 * (Math.floor(y * sh) * sw + Math.floor(x * sw));
-          assert.ok(screenshotPixels[at + (x < .5 ? 2 : 0)] > 100, 'Landscape preview fills its sides in portrait Safari-sized viewport');
-        }
-      }
+      await checkPreviewPixels('upright-hold-landscape',[.12,.88],[.23,.77]);
       await record();
       const original = await download('manual-landscape');
       const originalMeta = probe(original);
       const landscape = originalMeta.streams.find(s => s.codec_type === 'video');
       assert.ok(Math.abs(landscape.width / landscape.height - 16 / 9) < 0.025);
-      checkPixels(original,240,400);
+      checkPixels(original,240,320);
       audioIsNonSilent(original);
 
       await press(p,'btnFlipVideo');
@@ -562,7 +570,7 @@ async function test() {
       await wait(p, () => document.querySelector('#btnFlipVideo').getAttribute('aria-pressed') === 'true' &&
         document.querySelector('#btnDownload').download.includes('_镜像'));
       const mirrored = await download('mirrored-landscape');
-      checkPixels(mirrored,240,400,true);
+      checkPixels(mirrored,240,320,true);
       audioIsNonSilent(mirrored);
       assert.ok(Math.abs(Number(probe(mirrored).format.duration) - Number(originalMeta.format.duration)) < 0.35);
       await press(p,'btnFlipVideo');
@@ -576,8 +584,14 @@ async function test() {
       await record();
       const portrait = checkPixels(await download('manual-portrait'),400,240);
       assert.equal(portrait.width / portrait.height,9 / 16);
+      await press(p,'btnRetake');
+      await preview(p);
+      await press(p,'btnRatio');
+      await record();
+      const wide = checkPixels(await download('native-landscape'),400,240);
+      assert.equal(wide.width / wide.height,16 / 9);
       assert.deepEqual(errors, []);
-      console.log('Portrait hold produces filled landscape preview, opposite axes fill exports, matching-axis corners and mirror preserved: PASS', {landscape,portrait});
+      console.log('Default portrait fills from 3:4, cross-axis crops and landscape detail checked: PASS', {defaultPortrait,landscape,portrait,wide});
     } finally {
       await context.close();
     }
@@ -587,6 +601,10 @@ async function test() {
     const {page:p, context, errors} = await pageSetup('orientation',844,390);
     try {
       await preview(p);
+      assert.equal(await p.locator('#btnRatio').textContent(),'竖屏 9:16');
+      await press(p,'btnSettings');
+      await press(p,'btnOptAuto');
+      await press(p,'btnCloseSettings');
       assert.equal(await p.locator('#btnRatio').textContent(),'横屏 16:9');
       const trackId = () => p.locator('#previewVideo').evaluate(video => video.srcObject.getVideoTracks()[0].id);
       const initial = await trackId();

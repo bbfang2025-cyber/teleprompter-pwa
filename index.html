@@ -1607,8 +1607,8 @@
           <span id="cameraRatioStat" class="setting-val" aria-live="polite">等待取景</span>
         </div>
         <div class="ratio-seg" role="group" aria-label="画面比例切换">
-          <button id="btnOptAuto" class="ratio-seg-btn active" type="button" aria-pressed="true">跟随手机</button>
-          <button id="btnOptPortrait" class="ratio-seg-btn" type="button" aria-pressed="false">竖屏 9:16</button>
+          <button id="btnOptAuto" class="ratio-seg-btn" type="button" aria-pressed="false">跟随手机</button>
+          <button id="btnOptPortrait" class="ratio-seg-btn active" type="button" aria-pressed="true">竖屏 9:16</button>
           <button id="btnOptLandscape" class="ratio-seg-btn" type="button" aria-pressed="false">横屏 16:9</button>
         </div>
         <p id="cameraRatioHint" class="setting-desc">跟随手机时，关闭系统方向锁定再旋转手机。固定画幅时，建议把手机转到对应方向，能拍到更多画面。</p>
@@ -1665,7 +1665,7 @@
       <div class="setting-card">
         <div class="setting-row">
           <span class="setting-label">应用版本</span>
-          <span id="appVersionLabel" class="setting-val">v1.3.2</span>
+          <span id="appVersionLabel" class="setting-val">v1.3.3</span>
         </div>
         <button id="btnCheckUpdate" class="secondary-btn" type="button">检查更新 / 刷新最新版</button>
       </div>
@@ -1711,8 +1711,8 @@
 
     const STORAGE_SCRIPTS_KEY = 'tp_pwa_scripts_v1';
     const STORAGE_SETTINGS_KEY = 'tp_pwa_settings_v1';
-    const APP_VERSION = '1.3.2';
-    const APP_BUILD = '20261127-6';
+    const APP_VERSION = '1.3.3';
+    const APP_BUILD = '20261127-7';
     const SPEED_MIN = 10;
     const SPEED_MAX = 110;
 
@@ -1738,7 +1738,7 @@
       opacity: 44,
       leadDelay: 1.8,
       voiceFollow: false,
-      framingMode: 'auto',
+      framingMode: 'portrait',
       framingRevision: 2,
       activeScriptId: 'demo_1',
       winRect: null,
@@ -1952,7 +1952,8 @@
             opacity: bounded('opacity', 0, 90),
             leadDelay: bounded('leadDelay', 0, 3),
             voiceFollow: parsed.voiceFollow === true,
-            framingMode: parsed.framingRevision === 2 && ['portrait', 'landscape'].includes(parsed.framingMode) ? parsed.framingMode : 'auto',
+            framingMode: parsed.framingRevision === DEFAULT_SETTINGS.framingRevision && ['auto', 'portrait', 'landscape'].includes(parsed.framingMode)
+              ? parsed.framingMode : DEFAULT_SETTINGS.framingMode,
             framingRevision: 2,
             activeScriptId: typeof parsed.activeScriptId === 'string' ? parsed.activeScriptId : DEFAULT_SETTINGS.activeScriptId,
             winRect: validRect(parsed.winRect),
@@ -1995,7 +1996,7 @@
     const screenDirection = () => landscapeViewport.matches ? 'landscape' : 'portrait';
     const targetDirection = () => settings.framingMode === 'auto' ? screenDirection() : settings.framingMode;
     const fillsFrame = (width, height, ratio) =>
-      Boolean(width && height) && (width === height || (width > height) !== (ratio > 1));
+      Boolean(width && height) && (ratio < 1 || width <= height);
 
     function getVideoConstraints() {
       // iOS may change camera format or crop when a width, height or aspect ratio is requested.
@@ -2023,7 +2024,7 @@
         cameraRatioStat.textContent = cameraPending ? '正在调整取景…' : '等待取景';
         return;
       }
-      cameraRatioStat.textContent = '取景 ' + width + '×' + height + (fill ? ' · 裁切' : width / height === ratio ? '' : ' · 留边');
+      cameraRatioStat.textContent = '取景 ' + width + '×' + height + (width / height === ratio ? '' : fill ? ' · 裁切' : ' · 留边');
     }
     previewVideo.addEventListener('resize', updateCameraRatioStat);
 
