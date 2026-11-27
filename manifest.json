@@ -1,0 +1,26 @@
+{
+  "name": "极简提词录像",
+  "short_name": "极简提词",
+  "description": "手机竖屏口播提词与前置录像工具。支持悬浮提词窗、语音试滚、匀速录像、回看、系统分享与下载。",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#000000",
+  "background_color": "#000000",
+  "lang": "zh-CN",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

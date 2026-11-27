@@ -1,0 +1,3717 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="极简提词">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#000000">
+  <title>极简提词录像</title>
+  <link rel="manifest" href="./manifest.json">
+  <link rel="icon" type="image/svg+xml" href="./icon.svg">
+  <link rel="apple-touch-icon" href="./icon.svg">
+  <style>
+    :root {
+      --red: #FF3B30;
+      --amber: #FF9F0A;
+      --green: #30D158;
+      --blue: #0A84FF;
+      --tp-opacity: 0.56;
+      --tp-blur: 16px;
+      --tp-border-alpha: 0.16;
+      --tp-shadow-alpha: 0.45;
+      --tp-highlight-alpha: 0.12;
+      --tp-font-size: 30px;
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+      --safe-left: env(safe-area-inset-left, 0px);
+      --safe-right: env(safe-area-inset-right, 0px);
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100dvh;
+      overflow: hidden;
+      background: #000000;
+      color: #ffffff;
+      overscroll-behavior: none;
+      -webkit-user-select: none;
+      user-select: none;
+      -webkit-touch-callout: none;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", sans-serif;
+    }
+
+    button, input, textarea {
+      font-family: inherit;
+      color: inherit;
+    }
+
+    button {
+      border: none;
+      background: none;
+      padding: 0;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+
+    button:active {
+      transform: scale(0.96);
+    }
+
+    /* Full-bleed Camera Layer */
+    #previewVideo {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100dvh;
+      object-fit: cover;
+      transform: scaleX(-1);
+      background: radial-gradient(circle at 50% 35%, #16181f 0%, #050507 100%);
+      z-index: 1;
+    }
+
+    .vignette-top,
+    .vignette-bottom {
+      position: fixed;
+      left: 0;
+      right: 0;
+      pointer-events: none;
+      z-index: 2;
+    }
+
+    .vignette-top {
+      top: 0;
+      height: calc(110px + var(--safe-top));
+      background: linear-gradient(to bottom, rgba(0, 0, 0, 0.56) 0%, rgba(0, 0, 0, 0) 100%);
+    }
+
+    .vignette-bottom {
+      bottom: 0;
+      height: calc(210px + var(--safe-bottom));
+      background: linear-gradient(to top, rgba(0, 0, 0, 0.72) 0%, rgba(0, 0, 0, 0.25) 58%, rgba(0, 0, 0, 0) 100%);
+    }
+
+    /* WeChat In-App Banner */
+    #wechatBanner {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 60;
+      padding: max(10px, var(--safe-top)) max(12px, var(--safe-right)) 10px max(16px, var(--safe-left));
+      background: rgba(38, 26, 8, 0.84);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      border-bottom: 1px solid rgba(255, 196, 88, 0.3);
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      font-size: 13px;
+      line-height: 1.4;
+      color: #FFE4A8;
+    }
+
+    #wechatBanner.visible {
+      display: flex;
+    }
+
+    .wechat-msg {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 1;
+    }
+
+    .wechat-close {
+      min-width: 48px;
+      min-height: 48px;
+      display: grid;
+      place-items: center;
+      border-radius: 999px;
+      color: #FFE4A8;
+      font-size: 18px;
+      flex-shrink: 0;
+    }
+
+    /* Top HUD */
+    #topHud {
+      position: fixed;
+      top: max(12px, var(--safe-top));
+      left: max(12px, var(--safe-left));
+      right: max(12px, var(--safe-right));
+      z-index: 15;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      pointer-events: none;
+      transition: top 0.25s ease;
+    }
+
+    body.has-wechat-banner #topHud {
+      top: calc(max(12px, var(--safe-top)) + 64px);
+    }
+
+    .top-bar-row {
+      width: 100%;
+      max-width: 460px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .hud-capsule {
+      pointer-events: auto;
+      min-height: 48px;
+      padding: 0 14px;
+      border-radius: 999px;
+      background: rgba(20, 21, 26, 0.56);
+      backdrop-filter: blur(18px) saturate(145%);
+      -webkit-backdrop-filter: blur(18px) saturate(145%);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      color: rgba(255, 255, 255, 0.94);
+    }
+
+    #btnTopScript {
+      max-width: min(62vw, 260px);
+      justify-content: flex-start;
+    }
+
+    .hud-script-title {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-weight: 600;
+    }
+
+    .hud-script-meta {
+      flex-shrink: 0;
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.65);
+      font-variant-numeric: tabular-nums;
+    }
+
+    #btnRehearse {
+      min-width: 78px;
+      justify-content: center;
+      font-weight: 600;
+    }
+
+    #btnRehearse.active {
+      background: rgba(255, 159, 10, 0.28);
+      border-color: rgba(255, 159, 10, 0.55);
+      color: #FFD68A;
+    }
+
+    #recTimerPill {
+      display: none;
+      pointer-events: auto;
+      min-height: 48px;
+      padding: 0 18px;
+      border-radius: 999px;
+      background: rgba(255, 59, 48, 0.92);
+      box-shadow: 0 8px 24px rgba(255, 59, 48, 0.36);
+      align-items: center;
+      gap: 9px;
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      font-variant-numeric: tabular-nums;
+    }
+
+    #recTimerPill.visible {
+      display: inline-flex;
+    }
+
+    #recTimerPill.paused {
+      background: rgba(255, 159, 10, 0.92);
+      box-shadow: 0 8px 24px rgba(255, 159, 10, 0.34);
+      color: #1c1100;
+    }
+
+    .rec-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: #ffffff;
+      animation: pulseDot 1.1s ease-in-out infinite;
+    }
+
+    #recTimerPill.paused .rec-dot {
+      animation: none;
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+      background: #1c1100;
+    }
+
+    @keyframes pulseDot {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.35; transform: scale(0.76); }
+    }
+
+    #voiceBadge {
+      display: none;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 12px;
+      border-radius: 999px;
+      background: rgba(16, 20, 24, 0.66);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(48, 209, 88, 0.38);
+      font-size: 12px;
+      font-weight: 600;
+      color: #9CF7B6;
+    }
+
+    #voiceBadge.visible {
+      display: inline-flex;
+    }
+
+    .voice-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--green);
+      animation: pulseDot 1.2s ease-in-out infinite;
+    }
+
+    /* Floating Frosted-Glass Teleprompter Window */
+    #tpWindow {
+      position: fixed;
+      left: 50%;
+      top: 76px;
+      width: 360px;
+      height: 220px;
+      z-index: 20;
+      display: flex;
+      flex-direction: column;
+      background: rgba(14, 15, 19, var(--tp-opacity));
+      backdrop-filter: blur(var(--tp-blur)) saturate(145%);
+      -webkit-backdrop-filter: blur(var(--tp-blur)) saturate(145%);
+      border: 1px solid rgba(255, 255, 255, var(--tp-border-alpha));
+      border-radius: 18px;
+      box-shadow:
+        0 18px 44px rgba(0, 0, 0, var(--tp-shadow-alpha)),
+        inset 0 1px 0 rgba(255, 255, 255, var(--tp-highlight-alpha));
+      overflow: hidden;
+      will-change: left, top, width, height;
+    }
+
+    #tpWindow.is-interacting {
+      border-color: rgba(255, 255, 255, 0.38);
+    }
+
+    #tpLeadTrack {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+      z-index: 6;
+    }
+
+    #tpLeadTrack.active {
+      opacity: 1;
+    }
+
+    #tpLeadFill {
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, #FFD60A 0%, #FF9F0A 100%);
+      transform-origin: left center;
+      transform: scaleX(0);
+    }
+
+    #tpDragBar {
+      position: relative;
+      height: 48px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      touch-action: none;
+      cursor: grab;
+      z-index: 4;
+    }
+
+    #tpDragBar:active {
+      cursor: grabbing;
+    }
+
+    .grab-pill {
+      width: 42px;
+      height: 4px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.42);
+      pointer-events: none;
+    }
+
+    #tpLeadHint {
+      position: absolute;
+      left: 14px;
+      font-size: 11px;
+      font-weight: 600;
+      color: #FFD60A;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+    }
+
+    #tpLeadHint.visible {
+      opacity: 1;
+    }
+
+    #tpResetBtn {
+      position: absolute;
+      right: 2px;
+      top: 0;
+      width: 48px;
+      height: 48px;
+      display: grid;
+      place-items: center;
+      color: rgba(255, 255, 255, 0.72);
+      border-radius: 12px;
+      touch-action: manipulation;
+    }
+
+    #tpViewport {
+      position: relative;
+      flex: 1;
+      overflow: hidden;
+      touch-action: none;
+      -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 12%, #000 84%, transparent 100%);
+      mask-image: linear-gradient(to bottom, transparent 0%, #000 12%, #000 84%, transparent 100%);
+    }
+
+    #tpEyeLine {
+      position: absolute;
+      left: 8px;
+      top: 24%;
+      width: 3.5px;
+      height: 22px;
+      transform: translateY(-50%);
+      border-radius: 999px;
+      background: rgba(255, 214, 10, 0.78);
+      box-shadow: 0 0 8px rgba(255, 214, 10, 0.45);
+      pointer-events: none;
+      z-index: 3;
+    }
+
+    #tpTrack {
+      position: relative;
+      padding: 0 22px 0 20px;
+      will-change: transform;
+      transform: translate3d(0, 0, 0);
+    }
+
+    .tp-para {
+      margin: 0 0 0.56em 0;
+      font-size: var(--tp-font-size);
+      line-height: 1.48;
+      font-weight: 600;
+      letter-spacing: 0.015em;
+      color: rgba(255, 255, 255, 0.96);
+      text-shadow: 0 1px 6px rgba(0, 0, 0, 0.8), 0 0 1px rgba(0, 0, 0, 0.6);
+      word-break: break-word;
+    }
+
+    .tp-para.tp-gap {
+      height: 0.5em;
+      margin-bottom: 0.25em;
+    }
+
+    .tp-tok {
+      transition: color 0.16s ease;
+    }
+
+    .tp-tok.tp-read {
+      color: rgba(255, 255, 255, 0.44);
+    }
+
+    .tp-tok.tp-curr {
+      color: #FFD60A;
+    }
+
+    #tpResizeHandle {
+      position: absolute;
+      right: 0;
+      bottom: 0;
+      width: 48px;
+      height: 48px;
+      touch-action: none;
+      display: flex;
+      align-items: flex-end;
+      justify-content: flex-end;
+      padding: 10px;
+      cursor: nwse-resize;
+      z-index: 5;
+      color: rgba(255, 255, 255, 0.58);
+    }
+
+    /* Bottom Native Camera Control Deck */
+    #bottomDock {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 25;
+      padding: 10px max(12px, var(--safe-right)) max(18px, var(--safe-bottom)) max(12px, var(--safe-left));
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      pointer-events: none;
+    }
+
+    .speed-strip {
+      pointer-events: auto;
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      padding: 3px;
+      max-width: 100%;
+      border-radius: 999px;
+      background: rgba(20, 21, 26, 0.58);
+      backdrop-filter: blur(20px) saturate(150%);
+      -webkit-backdrop-filter: blur(20px) saturate(150%);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+    }
+
+    .speed-step-btn {
+      width: 48px;
+      height: 48px;
+      border-radius: 999px;
+      display: grid;
+      place-items: center;
+      font-size: 22px;
+      font-weight: 500;
+      color: #ffffff;
+      background: rgba(255, 255, 255, 0.1);
+      flex-shrink: 0;
+    }
+
+    .speed-step-btn:active {
+      background: rgba(255, 255, 255, 0.24);
+    }
+
+    .speed-preset-btn {
+      min-width: 48px;
+      height: 48px;
+      padding: 0 8px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 600;
+      color: rgba(255, 255, 255, 0.72);
+      transition: background 0.18s ease, color 0.18s ease;
+      flex-shrink: 0;
+    }
+
+    .speed-preset-btn.active {
+      background: rgba(255, 255, 255, 0.92);
+      color: #111216;
+    }
+
+    .speed-readout {
+      min-width: 48px;
+      padding: 0 4px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      line-height: 1.05;
+      font-variant-numeric: tabular-nums;
+      flex-shrink: 0;
+    }
+
+    .speed-readout strong {
+      font-size: 15px;
+      font-weight: 700;
+      color: #ffffff;
+    }
+
+    .speed-readout span {
+      font-size: 10px;
+      color: rgba(255, 255, 255, 0.6);
+    }
+
+    .shutter-row {
+      pointer-events: auto;
+      width: 100%;
+      max-width: 400px;
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .dock-slot-left {
+      display: flex;
+      justify-content: flex-start;
+      align-items: center;
+    }
+
+    .dock-slot-center {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .dock-slot-right {
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+    }
+
+    .dock-pill-btn {
+      min-width: 84px;
+      min-height: 48px;
+      padding: 0 16px;
+      border-radius: 999px;
+      background: rgba(28, 29, 34, 0.62);
+      backdrop-filter: blur(20px) saturate(150%);
+      -webkit-backdrop-filter: blur(20px) saturate(150%);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.34);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      font-size: 14px;
+      font-weight: 600;
+      color: #ffffff;
+      white-space: nowrap;
+    }
+
+    .dock-pill-btn.pause-mode {
+      min-width: 92px;
+      min-height: 54px;
+      background: rgba(255, 255, 255, 0.18);
+      border-color: rgba(255, 255, 255, 0.32);
+      font-size: 15px;
+    }
+
+    .dock-pill-btn.pause-mode.is-paused {
+      background: rgba(255, 159, 10, 0.9);
+      border-color: rgba(255, 214, 10, 0.65);
+      color: #1c1100;
+    }
+
+    .setting-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--green);
+      display: none;
+    }
+
+    .setting-dot.on {
+      display: inline-block;
+    }
+
+    /* Native iPhone Shutter */
+    #btnShutter {
+      width: 78px;
+      height: 78px;
+      border-radius: 50%;
+      border: 4px solid rgba(255, 255, 255, 0.95);
+      display: grid;
+      place-items: center;
+      background: rgba(0, 0, 0, 0.18);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.42);
+      transition: border-color 0.2s ease, transform 0.14s ease;
+    }
+
+    .shutter-core {
+      width: 62px;
+      height: 62px;
+      border-radius: 50%;
+      background: var(--red);
+      transition:
+        width 0.26s cubic-bezier(0.34, 1.56, 0.64, 1),
+        height 0.26s cubic-bezier(0.34, 1.56, 0.64, 1),
+        border-radius 0.26s ease;
+    }
+
+    #btnShutter.recording .shutter-core {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+    }
+
+    /* Countdown Overlay */
+    #countdownOverlay {
+      position: fixed;
+      inset: 0;
+      z-index: 40;
+      background: rgba(0, 0, 0, 0.32);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+    }
+
+    #countdownOverlay.visible {
+      display: flex;
+    }
+
+    #countdownNumber {
+      font-size: 128px;
+      line-height: 1;
+      font-weight: 700;
+      color: #ffffff;
+      text-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+      font-variant-numeric: tabular-nums;
+      animation: countPop 0.82s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    @keyframes countPop {
+      0% { opacity: 0; transform: scale(1.42); }
+      25% { opacity: 1; transform: scale(1); }
+      100% { opacity: 0.92; transform: scale(0.95); }
+    }
+
+    .countdown-cancel-tip {
+      padding: 8px 16px;
+      border-radius: 999px;
+      background: rgba(20, 21, 26, 0.64);
+      font-size: 13px;
+      color: rgba(255, 255, 255, 0.8);
+    }
+
+    /* Camera Fallback */
+    #cameraFallback {
+      position: fixed;
+      inset: 0;
+      z-index: 35;
+      padding: 24px;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: rgba(8, 9, 12, 0.82);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+    }
+
+    #cameraFallback.visible {
+      display: flex;
+    }
+
+    .fallback-card {
+      width: 100%;
+      max-width: 340px;
+      padding: 24px 20px;
+      border-radius: 22px;
+      background: rgba(28, 30, 36, 0.92);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      text-align: center;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.55);
+    }
+
+    .fallback-card h2 {
+      margin: 0 0 10px;
+      font-size: 18px;
+      font-weight: 700;
+    }
+
+    .fallback-card p {
+      margin: 0 0 18px;
+      font-size: 14px;
+      line-height: 1.55;
+      color: rgba(255, 255, 255, 0.72);
+    }
+
+    .fallback-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .primary-btn {
+      min-height: 48px;
+      padding: 0 18px;
+      border-radius: 14px;
+      background: var(--blue);
+      color: #ffffff;
+      font-size: 15px;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .secondary-btn {
+      min-height: 48px;
+      padding: 0 18px;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.12);
+      color: #ffffff;
+      font-size: 14px;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    /* Bottom Sheets (Scripts & Settings) */
+    .sheet-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 48;
+      background: rgba(0, 0, 0, 0.48);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.24s ease;
+    }
+
+    .sheet-backdrop.visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .bottom-sheet {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 50;
+      max-height: 85dvh;
+      display: flex;
+      flex-direction: column;
+      background: rgba(24, 25, 30, 0.9);
+      backdrop-filter: blur(28px) saturate(160%);
+      -webkit-backdrop-filter: blur(28px) saturate(160%);
+      border-top: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 24px 24px 0 0;
+      padding-bottom: max(18px, var(--safe-bottom));
+      transform: translateY(104%);
+      transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+      box-shadow: 0 -16px 48px rgba(0, 0, 0, 0.52);
+    }
+
+    .bottom-sheet.open {
+      transform: translateY(0);
+    }
+
+    .sheet-handle {
+      width: 38px;
+      height: 4px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.28);
+      margin: 10px auto 4px;
+      flex-shrink: 0;
+    }
+
+    .sheet-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 4px 16px 10px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      flex-shrink: 0;
+    }
+
+    .sheet-title {
+      font-size: 17px;
+      font-weight: 700;
+      margin: 0;
+    }
+
+    .sheet-header-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .sheet-action-btn {
+      min-width: 48px;
+      min-height: 48px;
+      padding: 0 12px;
+      border-radius: 12px;
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--blue);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .sheet-body {
+      padding: 14px 16px 8px;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      touch-action: pan-y;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    /* Script List & Editor */
+    .script-list {
+      display: flex;
+      gap: 10px;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      touch-action: pan-x;
+      padding-bottom: 4px;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }
+
+    .script-list::-webkit-scrollbar {
+      display: none;
+    }
+
+    .script-card {
+      flex: 0 0 198px;
+      padding: 10px 12px;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.07);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      text-align: left;
+      position: relative;
+    }
+
+    .script-card.active {
+      background: rgba(10, 132, 255, 0.18);
+      border-color: rgba(10, 132, 255, 0.65);
+    }
+
+    .script-card-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+    }
+
+    .script-card-select {
+      flex: 1;
+      min-width: 0;
+      min-height: 48px;
+      text-align: left;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 4px;
+    }
+
+    .script-card-name {
+      font-size: 14px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .script-card-meta {
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.58);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .script-del-btn {
+      width: 48px;
+      height: 48px;
+      margin-right: -8px;
+      border-radius: 12px;
+      display: grid;
+      place-items: center;
+      color: rgba(255, 255, 255, 0.52);
+      flex-shrink: 0;
+    }
+
+    .script-del-btn:active {
+      color: var(--red);
+    }
+
+    .editor-box {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .editor-input,
+    .editor-textarea {
+      width: 100%;
+      border-radius: 14px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(255, 255, 255, 0.08);
+      color: #ffffff;
+      padding: 12px 14px;
+      font-size: 16px;
+      outline: none;
+      -webkit-user-select: text;
+      user-select: text;
+      touch-action: pan-y;
+    }
+
+    .editor-input:focus,
+    .editor-textarea:focus {
+      border-color: rgba(10, 132, 255, 0.72);
+      background: rgba(255, 255, 255, 0.11);
+    }
+
+    .editor-textarea {
+      min-height: 175px;
+      resize: vertical;
+      line-height: 1.55;
+    }
+
+    .editor-stats {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.58);
+      padding: 0 4px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Settings Controls */
+    .setting-card {
+      padding: 14px;
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.07);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .setting-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .setting-label {
+      font-size: 15px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .beta-tag {
+      padding: 2px 7px;
+      border-radius: 6px;
+      background: rgba(48, 209, 88, 0.2);
+      color: #82F09F;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .setting-val {
+      font-size: 14px;
+      font-weight: 600;
+      color: rgba(255, 255, 255, 0.78);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .setting-desc {
+      margin: 0;
+      font-size: 12.5px;
+      line-height: 1.45;
+      color: rgba(255, 255, 255, 0.58);
+    }
+
+    /* iOS Switch with >=48x48 hit target */
+    .ios-switch-wrap {
+      min-width: 56px;
+      min-height: 48px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: flex-end;
+    }
+
+    .ios-switch {
+      position: relative;
+      width: 52px;
+      height: 32px;
+      border-radius: 999px;
+      background: rgba(120, 120, 128, 0.42);
+      transition: background 0.22s ease;
+    }
+
+    .ios-switch::after {
+      content: "";
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: #ffffff;
+      box-shadow: 0 3px 8px rgba(0, 0, 0, 0.25);
+      transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .ios-switch[aria-checked="true"] {
+      background: var(--green);
+    }
+
+    .ios-switch[aria-checked="true"]::after {
+      transform: translateX(20px);
+    }
+
+    input[type="range"].ios-slider {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 32px;
+      background: transparent;
+      margin: 0;
+    }
+
+    input[type="range"].ios-slider::-webkit-slider-runnable-track {
+      height: 5px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.22);
+    }
+
+    input[type="range"].ios-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      background: #ffffff;
+      margin-top: -10.5px;
+      box-shadow: 0 3px 10px rgba(0, 0, 0, 0.42);
+    }
+
+    /* Fullscreen Review Overlay */
+    #reviewOverlay {
+      position: fixed;
+      inset: 0;
+      z-index: 70;
+      background: #000000;
+      display: none;
+      flex-direction: column;
+      padding: max(12px, var(--safe-top)) max(14px, var(--safe-right)) max(18px, var(--safe-bottom)) max(14px, var(--safe-left));
+      gap: 12px;
+    }
+
+    #reviewOverlay.visible {
+      display: flex;
+    }
+
+    .review-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 4px 4px 0;
+      flex-shrink: 0;
+    }
+
+    .review-title {
+      font-size: 17px;
+      font-weight: 700;
+    }
+
+    .review-meta {
+      padding: 6px 12px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.12);
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.85);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .review-stage {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 18px;
+      overflow: hidden;
+      background: #0d0e12;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    #reviewVideo {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background: #000000;
+    }
+
+    .review-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-shrink: 0;
+    }
+
+    #btnRetake {
+      flex: 1;
+      min-height: 54px;
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.14);
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    #btnSaveAlbum {
+      flex: 1.8;
+      min-height: 54px;
+      border-radius: 16px;
+      background: var(--blue);
+      color: #ffffff;
+      font-size: 16px;
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      box-shadow: 0 10px 28px rgba(10, 132, 255, 0.35);
+    }
+
+    /* Toast */
+    #toast {
+      position: fixed;
+      left: 50%;
+      bottom: calc(max(18px, var(--safe-bottom)) + 162px);
+      transform: translate(-50%, 10px);
+      z-index: 90;
+      max-width: min(88vw, 360px);
+      padding: 11px 16px;
+      border-radius: 14px;
+      background: rgba(28, 29, 34, 0.88);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      box-shadow: 0 14px 36px rgba(0, 0, 0, 0.45);
+      font-size: 13px;
+      line-height: 1.45;
+      text-align: center;
+      color: #ffffff;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.22s ease, transform 0.22s ease;
+    }
+
+    #toast.visible {
+      opacity: 1;
+      transform: translate(-50%, 0);
+    }
+
+    @media (max-width: 360px) {
+      .speed-preset-btn {
+        min-width: 44px;
+        padding: 0 6px;
+      }
+      .dock-pill-btn {
+        min-width: 74px;
+        padding: 0 12px;
+      }
+    }
+    /* Keep the page itself fixed while allowing scrolling in the sheets and editor. */
+    html, body { height: 100%; height: 100dvh; }
+    html { color-scheme: dark; }
+    body { position: fixed; inset: 0; }
+    #topHud { z-index: 22; }
+    #tpDragBar, #tpResizeHandle, #tpViewport, input[type="range"].ios-slider {
+      touch-action: none;
+    }
+    .sheet-body, .script-list, .editor-textarea { overscroll-behavior: contain; }
+    .bottom-sheet {
+      bottom: var(--keyboard-offset, 0px);
+      max-height: min(85vh, calc(var(--visual-height, 100vh) - 12px));
+      visibility: hidden;
+    }
+    .bottom-sheet.open { visibility: visible; }
+    button:focus-visible, input:focus-visible, textarea:focus-visible,
+    a:focus-visible, [tabindex="0"]:focus-visible {
+      outline: 2px solid #70bcff;
+      outline-offset: 2px;
+    }
+    button:disabled { opacity: .55; cursor: default; }
+    input[type="range"].ios-slider { height: 44px; }
+    input[type="range"].ios-slider::-moz-range-track {
+      height: 5px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, .22);
+    }
+    input[type="range"].ios-slider::-moz-range-thumb {
+      height: 26px;
+      width: 26px;
+      border-radius: 50%;
+      border: 0;
+      background: #fff;
+    }
+    .ios-switch { min-height: 44px; background: transparent; }
+    .ios-switch::before {
+      content: "";
+      position: absolute;
+      inset: 6px 0;
+      border-radius: 999px;
+      background: rgba(120, 120, 128, .42);
+    }
+    .ios-switch::after { top: 8px; }
+    .ios-switch[aria-checked="true"] { background: transparent; }
+    .ios-switch[aria-checked="true"]::before { background: var(--green); }
+    #countdownCancel { min-height: 44px; }
+    #reviewNotice { margin: 0; font-size: 13px; }
+    #reviewNotice:empty { display: none; }
+    #btnDownload {
+      color: #fff;
+      display: grid;
+      place-items: center;
+      flex: 1;
+      min-height: 54px;
+      text-align: center;
+      text-decoration: none;
+      border-radius: 16px;
+      background: rgba(255, 255, 255, .14);
+    }
+    .review-actions { gap: 8px; }
+    #btnSaveAlbum { flex: 1.6; padding: 0 8px; font-size: 14px; }
+    #btnSaveAlbum svg { flex-shrink: 0; }
+    .tp-para { overflow-wrap: anywhere; }
+    #processingStatus {
+      position: fixed;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 45;
+      border-radius: 16px;
+      padding: 12px 20px;
+      background: #18191e;
+    }
+    @media (max-height: 440px) {
+      #bottomDock { gap: 6px; padding-top: 4px; padding-bottom: max(6px, var(--safe-bottom)); }
+      #btnShutter { width: 56px; height: 56px; }
+      .shutter-core { width: 42px; height: 42px; }
+      .sheet-body { padding-top: 8px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Fullscreen Front Camera Preview (Mirrored like a mirror, never recorded with overlays) -->
+  <video id="previewVideo" autoplay playsinline muted></video>
+  <div class="vignette-top"></div>
+  <div class="vignette-bottom"></div>
+
+  <!-- WeChat Browser Warning -->
+  <div id="wechatBanner" role="status">
+    <div class="wechat-msg">
+      <span>点击右上角「···」→ 在 Safari / 默认浏览器打开以使用完整录像功能</span>
+    </div>
+    <button id="btnCloseWechat" class="wechat-close" type="button" aria-label="关闭提示">✕</button>
+  </div>
+
+  <!-- Top Status HUD -->
+  <header id="topHud">
+    <div id="topIdleBar" class="top-bar-row">
+      <button id="btnTopScript" class="hud-capsule" type="button" aria-label="切换稿件">
+        <span id="hudScriptTitle" class="hud-script-title">载入中...</span>
+        <span id="hudScriptMeta" class="hud-script-meta">0秒</span>
+      </button>
+      <button id="btnRehearse" class="hud-capsule" type="button" aria-pressed="false" aria-label="试滚排练">试滚</button>
+    </div>
+
+    <div id="recTimerPill" role="timer">
+      <span class="rec-dot"></span>
+      <span id="recTimerText">00:00</span>
+    </div>
+
+    <div id="voiceBadge">
+      <span class="voice-dot"></span>
+      <span>语音跟读中</span>
+    </div>
+  </header>
+
+  <!-- Floating Frosted-Glass Teleprompter Window -->
+  <section id="tpWindow" aria-label="悬浮提词器">
+    <div id="tpLeadTrack"><div id="tpLeadFill"></div></div>
+
+    <div id="tpDragBar" tabindex="0" aria-label="提词窗位置，可用方向键移动">
+      <span id="tpLeadHint">起读缓冲</span>
+      <div class="grab-pill"></div>
+      <button id="tpResetBtn" type="button" title="回到首行" aria-label="提词回到首行">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 12a9 9 0 1 0 3-6.7L3 8"/>
+          <path d="M3 3v5h5"/>
+        </svg>
+      </button>
+    </div>
+
+    <div id="tpViewport">
+      <div id="tpEyeLine"></div>
+      <div id="tpTrack"></div>
+    </div>
+
+    <div id="tpResizeHandle" tabindex="0" aria-label="提词窗大小，可用方向键调整">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <path d="M5 14C9.97056 14 14 9.97056 14 5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+    </div>
+  </section>
+
+  <!-- Camera Permission / Secure Context Fallback -->
+  <div id="cameraFallback">
+    <div class="fallback-card">
+      <h2 id="fallbackTitle">需要开启前置摄像头</h2>
+      <p id="fallbackDesc">本工具完全在本地浏览器运行，不会上传您的视频。请允许摄像头与麦克风权限以开始口播录像。</p>
+      <div class="fallback-actions">
+        <button id="btnRetryCamera" class="primary-btn" type="button">重新开启摄像头</button>
+        <button id="btnPreviewNoCam" class="secondary-btn" type="button">纯黑背景体验提词</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3-2-1 Countdown Overlay -->
+  <div id="countdownOverlay" role="dialog" aria-modal="true" aria-label="开拍倒计时">
+    <div id="countdownNumber">3</div>
+    <div id="countdownStatus" aria-live="polite"></div>
+    <button id="countdownCancel" class="countdown-cancel-tip" type="button">取消开拍</button>
+  </div>
+
+  <!-- Bottom Native iPhone Camera Deck -->
+  <footer id="bottomDock">
+    <div class="speed-strip" aria-label="滚屏速度调节">
+      <button id="btnSpeedDown" class="speed-step-btn" type="button" aria-label="减慢滚屏速度">−</button>
+      <button class="speed-preset-btn" type="button" data-speed="24">慢</button>
+      <button class="speed-preset-btn active" type="button" data-speed="38">适中</button>
+      <button class="speed-preset-btn" type="button" data-speed="62">快</button>
+      <div class="speed-readout" aria-live="polite">
+        <strong id="speedValue">38</strong>
+        <span>px/s</span>
+      </div>
+      <button id="btnSpeedUp" class="speed-step-btn" type="button" aria-label="加快滚屏速度">+</button>
+    </div>
+
+    <div class="shutter-row">
+      <div class="dock-slot-left">
+        <button id="btnLeftAction" class="dock-pill-btn" type="button">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="8" y1="13" x2="16" y2="13"/>
+            <line x1="8" y1="17" x2="14" y2="17"/>
+          </svg>
+          <span>稿件库</span>
+        </button>
+      </div>
+
+      <div class="dock-slot-center">
+        <button id="btnShutter" type="button" aria-label="开始录制">
+          <span class="shutter-core"></span>
+        </button>
+      </div>
+
+      <div class="dock-slot-right">
+        <button id="btnSettings" class="dock-pill-btn" type="button">
+          <span id="settingVoiceDot" class="setting-dot"></span>
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="4" y1="21" x2="4" y2="14"/>
+            <line x1="4" y1="10" x2="4" y2="3"/>
+            <line x1="12" y1="21" x2="12" y2="12"/>
+            <line x1="12" y1="8" x2="12" y2="3"/>
+            <line x1="20" y1="21" x2="20" y2="16"/>
+            <line x1="20" y1="12" x2="20" y2="3"/>
+            <line x1="1" y1="14" x2="7" y2="14"/>
+            <line x1="9" y1="8" x2="15" y2="8"/>
+            <line x1="17" y1="16" x2="23" y2="16"/>
+          </svg>
+          <span>设置</span>
+        </button>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Sheet Backdrop -->
+  <div id="sheetBackdrop" class="sheet-backdrop"></div>
+
+  <!-- Scripts Library Bottom Sheet -->
+  <section id="scriptsSheet" class="bottom-sheet" role="dialog" aria-modal="true" aria-label="稿件库" aria-hidden="true">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <h2 class="sheet-title">稿件库</h2>
+      <div class="sheet-header-actions">
+        <button id="btnNewScript" class="sheet-action-btn" type="button">+ 新建</button>
+        <button id="btnCloseScripts" class="sheet-action-btn" type="button">完成</button>
+      </div>
+    </div>
+    <div class="sheet-body">
+      <div id="scriptList" class="script-list"></div>
+      <div class="editor-box">
+        <input id="scriptTitleInput" name="scriptTitle" aria-label="稿件标题" autocomplete="off" class="editor-input" type="text" maxlength="60" placeholder="输入稿件标题...">
+        <textarea id="scriptBodyInput" name="scriptBody" aria-label="稿件正文" autocomplete="off" class="editor-textarea" placeholder="在此粘贴或输入口播逐字稿，自动实时保存..."></textarea>
+        <div class="editor-stats">
+          <span id="editorCharStat">0 字</span>
+          <span id="editorDurStat">预计口播 0 秒</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Settings & Voice Follow Bottom Sheet -->
+  <section id="settingsSheet" class="bottom-sheet" role="dialog" aria-modal="true" aria-label="提词设置" aria-hidden="true">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <h2 class="sheet-title">提词设置与语音跟读</h2>
+      <div class="sheet-header-actions">
+        <button id="btnCloseSettings" class="sheet-action-btn" type="button">完成</button>
+      </div>
+    </div>
+    <div class="sheet-body">
+      <div class="setting-card">
+        <div class="setting-row">
+          <div class="setting-label">
+            <span>语音跟随滚动</span>
+            <span class="beta-tag">Beta</span>
+          </div>
+          <div class="ios-switch-wrap">
+            <button id="switchVoice" class="ios-switch" type="button" role="switch" aria-checked="false" aria-label="语音跟随滚动开关"></button>
+          </div>
+        </div>
+        <p class="setting-desc">试滚时跟随中文语音。开拍后自动改用匀速滚动，麦克风用于录像录音。</p>
+      </div>
+
+      <div class="setting-card">
+        <div class="setting-row">
+          <label class="setting-label" for="sliderSpeed">匀速滚屏速度</label>
+          <span id="speedSliderVal" class="setting-val">38 px/s</span>
+        </div>
+        <input id="sliderSpeed" class="ios-slider" name="speed" type="range" min="15" max="110" step="1" value="38">
+      </div>
+
+      <div class="setting-card">
+        <div class="setting-row">
+          <label class="setting-label" for="sliderFontSize">字幕字号</label>
+          <span id="fontSizeVal" class="setting-val">30 px</span>
+        </div>
+        <input id="sliderFontSize" name="fontSize" class="ios-slider" type="range" min="20" max="48" step="1" value="30">
+      </div>
+
+      <div class="setting-card">
+        <div class="setting-row">
+          <label class="setting-label" for="sliderOpacity">悬浮窗不透明度</label>
+          <span id="opacityVal" class="setting-val">56%</span>
+        </div>
+        <input id="sliderOpacity" name="opacity" class="ios-slider" type="range" min="0" max="90" step="2" value="56">
+      </div>
+
+      <div class="setting-card">
+        <div class="setting-row">
+          <label class="setting-label" for="sliderLeadDelay">首行起读缓冲延迟</label>
+          <span id="leadDelayVal" class="setting-val">1.8 秒</span>
+        </div>
+        <input id="sliderLeadDelay" name="leadDelay" class="ios-slider" type="range" min="0" max="3" step="0.2" value="1.8">
+        <p class="setting-desc">3-2-1 倒计时结束后先静止停留这段时间，让你从容念完第一行再平稳启动滚动。</p>
+      </div>
+
+      <button id="btnResetWindow" class="secondary-btn" type="button">重置悬浮窗位置与大小</button>
+    </div>
+  </section>
+
+  <!-- Fullscreen Video Review Overlay -->
+  <div id="processingStatus" role="status" hidden>正在处理录像…</div>
+  <section id="reviewOverlay" role="dialog" aria-modal="true" aria-label="录像回看">
+    <div class="review-header">
+      <span class="review-title">成片回看</span>
+      <span id="reviewMeta" class="review-meta">00:00 · MP4</span>
+    </div>
+    <div class="review-stage">
+      <video id="reviewVideo" controls playsinline></video>
+    </div>
+    <p id="reviewNotice" role="status"></p>
+    <div class="review-actions">
+      <button id="btnRetake" type="button">重拍</button>
+      <a id="btnDownload">下载文件</a>
+      <button id="btnSaveAlbum" type="button">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 3v12"/>
+          <polyline points="7 8 12 3 17 8"/>
+          <path d="M5 15v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"/>
+        </svg>
+        <span>保存到手机相册</span>
+      </button>
+    </div>
+  </section>
+
+  <!-- Toast Notification -->
+  <div id="toast" role="status" aria-live="polite"></div>
+
+  <script>
+  (() => {
+    'use strict';
+
+    const STORAGE_SCRIPTS_KEY = 'tp_pwa_scripts_v1';
+    const STORAGE_SETTINGS_KEY = 'tp_pwa_settings_v1';
+    const SPEED_MIN = 15;
+    const SPEED_MAX = 110;
+
+    const DEFAULT_SCRIPTS = [
+      {
+        id: 'demo_1',
+        title: 'AI 口播开场示范',
+        body: '很多人拍口播总是卡壳，盯着提词器眼神还飘来飘去。\n\n其实只要把悬浮窗拖到手机最顶部，紧贴着前置摄像头，观众看着就像你在直视镜头聊天。\n\n现在开拍后还会给你留出两秒缓冲时间，念完第一句才平稳滚屏。\n\n拍完点一下保存到相册，一镜到底直接出片，赶紧试试看效果吧！',
+        updatedAt: Date.now()
+      },
+      {
+        id: 'demo_2',
+        title: '实测避坑分享模板',
+        body: '先说结论：这个方法我自己连测了三天，确实能把重拍率砍掉一半。\n\n以前对着逐字稿硬背，十条里有八条因为忘词重来，越录越焦虑。\n\n后来我把提词窗调成半透明磨砂，一边顺着关键词说，一边还能看清自己的表情状态。\n\n记住，好内容不怕慢，把语速降下来，反而更像在和朋友面对面说话。',
+        updatedAt: Date.now() - 60000
+      }
+    ];
+
+    const DEFAULT_SETTINGS = {
+      speed: 38,
+      fontSize: 30,
+      opacity: 56,
+      leadDelay: 1.8,
+      voiceFollow: false,
+      activeScriptId: 'demo_1',
+      winRect: null
+    };
+
+    // ---------- DOM Refs ----------
+    const $ = (id) => document.getElementById(id);
+    const previewVideo = $('previewVideo');
+    const wechatBanner = $('wechatBanner');
+    const btnCloseWechat = $('btnCloseWechat');
+    const topIdleBar = $('topIdleBar');
+    const btnTopScript = $('btnTopScript');
+    const hudScriptTitle = $('hudScriptTitle');
+    const hudScriptMeta = $('hudScriptMeta');
+    const btnRehearse = $('btnRehearse');
+    const recTimerPill = $('recTimerPill');
+    const recTimerText = $('recTimerText');
+    const voiceBadge = $('voiceBadge');
+
+    const tpWindow = $('tpWindow');
+    const tpLeadTrack = $('tpLeadTrack');
+    const tpLeadFill = $('tpLeadFill');
+    const tpLeadHint = $('tpLeadHint');
+    const tpDragBar = $('tpDragBar');
+    const tpResetBtn = $('tpResetBtn');
+    const tpViewport = $('tpViewport');
+    const tpTrack = $('tpTrack');
+    const tpResizeHandle = $('tpResizeHandle');
+
+    const cameraFallback = $('cameraFallback');
+    const fallbackTitle = $('fallbackTitle');
+    const fallbackDesc = $('fallbackDesc');
+    const btnRetryCamera = $('btnRetryCamera');
+    const btnPreviewNoCam = $('btnPreviewNoCam');
+
+    const countdownOverlay = $('countdownOverlay');
+    const countdownNumber = $('countdownNumber');
+    const countdownStatus = $('countdownStatus');
+    const countdownCancel = $('countdownCancel');
+    const processingStatus = $('processingStatus');
+
+    const btnSpeedDown = $('btnSpeedDown');
+    const btnSpeedUp = $('btnSpeedUp');
+    const speedValueEl = $('speedValue');
+    const sliderSpeed = $('sliderSpeed');
+    const speedSliderVal = $('speedSliderVal');
+    const speedPresetBtns = Array.from(document.querySelectorAll('.speed-preset-btn'));
+    const btnLeftAction = $('btnLeftAction');
+    const btnShutter = $('btnShutter');
+    const btnSettings = $('btnSettings');
+    const settingVoiceDot = $('settingVoiceDot');
+
+    const sheetBackdrop = $('sheetBackdrop');
+    const scriptsSheet = $('scriptsSheet');
+    const settingsSheet = $('settingsSheet');
+    const btnNewScript = $('btnNewScript');
+    const btnCloseScripts = $('btnCloseScripts');
+    const btnCloseSettings = $('btnCloseSettings');
+    const scriptListEl = $('scriptList');
+    const scriptTitleInput = $('scriptTitleInput');
+    const scriptBodyInput = $('scriptBodyInput');
+    const editorCharStat = $('editorCharStat');
+    const editorDurStat = $('editorDurStat');
+
+    const switchVoice = $('switchVoice');
+    const sliderFontSize = $('sliderFontSize');
+    const fontSizeVal = $('fontSizeVal');
+    const sliderOpacity = $('sliderOpacity');
+    const opacityVal = $('opacityVal');
+    const sliderLeadDelay = $('sliderLeadDelay');
+    const leadDelayVal = $('leadDelayVal');
+    const btnResetWindow = $('btnResetWindow');
+
+    const reviewOverlay = $('reviewOverlay');
+    const reviewMeta = $('reviewMeta');
+    const reviewNotice = $('reviewNotice');
+    const btnDownload = $('btnDownload');
+    const reviewVideo = $('reviewVideo');
+    const btnRetake = $('btnRetake');
+    const btnSaveAlbum = $('btnSaveAlbum');
+    const toastEl = $('toast');
+
+    // ---------- App State ----------
+    let storageNoticeShown = false;
+    let scripts = loadScripts();
+    let settings = loadSettings();
+    let stream = null;
+    let currentVideoUrl = '';
+
+    let recState = 'idle';
+    let isRehearsing = false;
+    let countdownTimer = null;
+
+    // Accurate active duration tracking (excluding pause gaps)
+    let activeRecordedMs = 0;
+    let activeSegmentStart = 0;
+    let timerRafId = null;
+
+    // Teleprompter scrolling state (strictly rAF + deltaTime + translate3d)
+    let scrollY = 0;
+    let targetScrollY = 0;
+    let maxScrollY = 0;
+    let leadRemaining = 0;
+    let leadTotal = 0;
+    let lastRafAt = 0;
+    let scrollRafId = null;
+
+    // Speech matching state
+    let normalizedScript = '';
+    let charSpanMap = [];
+    let currentCharIdx = 0;
+    let recognition = null;
+    let activeScrollMode = 'speed'; // 'speed' | 'voice'
+    let speechRestartTimes = [];
+
+    // WakeLock & Toast
+    let wakeLock = null;
+    let toastTimer = null;
+
+    // ---------- Helpers ----------
+    function clamp(val, min, max) {
+      return Math.min(max, Math.max(min, val));
+    }
+
+    function showToast(msg, duration = 2800) {
+      toastEl.textContent = msg;
+      toastEl.classList.add('visible');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
+        toastEl.classList.remove('visible');
+      }, duration);
+    }
+
+    function formatTime(ms) {
+      const totalSec = Math.max(0, Math.floor(ms / 1000));
+      const m = String(Math.floor(totalSec / 60)).padStart(2, '0');
+      const s = String(totalSec % 60).padStart(2, '0');
+      return `${m}:${s}`;
+    }
+
+    function countSpokenChars(text) {
+      const cleaned = (text || '').replace(/[\s\p{P}\p{S}]/gu, '');
+      return cleaned.length;
+    }
+
+    function estimateSeconds(text) {
+      const chars = countSpokenChars(text);
+      if (!chars) return 0;
+      return Math.max(1, Math.round(chars / 4.3));
+    }
+
+    function loadScripts() {
+      try {
+        const raw = localStorage.getItem(STORAGE_SCRIPTS_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            const ids = new Set();
+            const valid = parsed.filter(item => {
+              if (!item || typeof item.id !== 'string' || typeof item.body !== 'string' || ids.has(item.id)) return false;
+              ids.add(item.id);
+              if (typeof item.title !== 'string') item.title = '';
+              return true;
+            });
+            if (valid.length) return valid;
+          }
+        }
+      } catch (_) {}
+      return JSON.parse(JSON.stringify(DEFAULT_SCRIPTS));
+    }
+
+    function saveScripts() {
+      try {
+        localStorage.setItem(STORAGE_SCRIPTS_KEY, JSON.stringify(scripts));
+        storageNoticeShown = false;
+      } catch (_) {
+        if (!storageNoticeShown) showToast('稿件暂时无法保存到本机，请先复制备份', 5000);
+        storageNoticeShown = true;
+      }
+    }
+
+    function loadSettings() {
+      try {
+        const raw = localStorage.getItem(STORAGE_SETTINGS_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          const bounded = (key, min, max) => {
+            const value = Number(parsed[key] ?? DEFAULT_SETTINGS[key]);
+            return Number.isFinite(value) ? clamp(value, min, max) : DEFAULT_SETTINGS[key];
+          };
+          const rect = parsed.winRect;
+          return {
+            speed: Math.round(bounded('speed', SPEED_MIN, SPEED_MAX)),
+            fontSize: bounded('fontSize', 20, 48),
+            opacity: bounded('opacity', 0, 90),
+            leadDelay: bounded('leadDelay', 0, 3),
+            voiceFollow: parsed.voiceFollow === true,
+            activeScriptId: typeof parsed.activeScriptId === 'string' ? parsed.activeScriptId : DEFAULT_SETTINGS.activeScriptId,
+            winRect: rect && ['x', 'y', 'width', 'height'].every(key => Number.isFinite(rect[key])) ? rect : null
+          };
+
+        }
+      } catch (_) {}
+      return { ...DEFAULT_SETTINGS };
+    }
+
+    function saveSettings() {
+      try {
+        localStorage.setItem(STORAGE_SETTINGS_KEY, JSON.stringify(settings));
+      } catch (_) {}
+    }
+
+    function getActiveScript() {
+      let found = scripts.find((s) => s.id === settings.activeScriptId);
+      if (!found) {
+        found = scripts[0];
+        settings.activeScriptId = found.id;
+        saveSettings();
+      }
+      return found;
+    }
+
+    // ---------- WeChat Detection ----------
+    if (/MicroMessenger/i.test(navigator.userAgent)) {
+      wechatBanner.classList.add('visible');
+      document.body.classList.add('has-wechat-banner');
+    }
+    btnCloseWechat.addEventListener('click', () => {
+      wechatBanner.classList.remove('visible');
+      document.body.classList.remove('has-wechat-banner');
+    });
+
+    // ---------- Camera preview and capture ownership ----------
+    const VIDEO_CONSTRAINTS = {
+      facingMode: { ideal: 'user' },
+      width: { ideal: 1080 },
+      height: { ideal: 1920 },
+      frameRate: { ideal: 30, max: 30 }
+    };
+    let cameraRequest = 0;
+    let cameraPending = false;
+    let noCamera = false;
+    let frameWaitCancel = null;
+
+    function stopTracks(media) {
+      if (media) media.getTracks().forEach(track => track.stop());
+    }
+
+    function releaseCamera() {
+      cameraRequest++;
+      cameraPending = false;
+      btnRetryCamera.disabled = false;
+      if (frameWaitCancel) frameWaitCancel();
+      const previous = stream;
+      stream = null;
+      previewVideo.pause();
+      previewVideo.srcObject = null;
+      stopTracks(previous);
+    }
+
+    function waitForFrame(media) {
+      return new Promise((resolve, reject) => {
+        let timer;
+        const finish = (error) => {
+          clearTimeout(timer);
+          previewVideo.removeEventListener('loadeddata', check);
+          previewVideo.removeEventListener('playing', check);
+          frameWaitCancel = null;
+          if (error) reject(error);
+          else resolve();
+        };
+        const check = () => {
+          if (previewVideo.srcObject === media && previewVideo.readyState >= 2 && previewVideo.videoWidth) finish();
+        };
+        frameWaitCancel = () => finish(new Error('摄像头已释放'));
+        timer = setTimeout(() => finish(new Error('摄像头未返回画面')), 6000);
+        previewVideo.addEventListener('loadeddata', check);
+        previewVideo.addEventListener('playing', check);
+        previewVideo.play().catch(() => {});
+        check();
+      });
+    }
+
+    function usableTrack(media, kind) {
+      return media?.getTracks().some(track =>
+        track.kind === kind && track.readyState === 'live' && track.enabled && !track.muted
+      );
+    }
+
+    async function initCamera(withAudio = false) {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        fallbackTitle.textContent = window.isSecureContext ? '浏览器不支持摄像头' : '需要 HTTPS 安全链接';
+        fallbackDesc.textContent = window.isSecureContext
+          ? '请使用 Safari 或 Chrome 打开此页面。'
+          : '请通过 HTTPS 网页打开，再授权摄像头与麦克风。';
+        cameraFallback.classList.add('visible');
+        return false;
+      }
+
+      releaseCamera();
+      const request = cameraRequest;
+      cameraPending = true;
+      btnRetryCamera.disabled = true;
+      let granted;
+      const audio = withAudio ? { echoCancellation: true, noiseSuppression: true, autoGainControl: true } : false;
+      try {
+        try {
+          granted = await navigator.mediaDevices.getUserMedia({ video: VIDEO_CONSTRAINTS, audio });
+        } catch (error) {
+          if (request !== cameraRequest) return false;
+          if (error.name !== 'OverconstrainedError' && error.name !== 'ConstraintNotSatisfiedError') throw error;
+          granted = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: withAudio });
+        }
+        if (request !== cameraRequest || document.hidden) {
+          stopTracks(granted);
+          return false;
+        }
+        stream = granted;
+        previewVideo.srcObject = granted;
+        await waitForFrame(granted);
+        if (request !== cameraRequest) return false;
+        if (!usableTrack(granted, 'video') || (withAudio && !usableTrack(granted, 'audio'))) {
+          throw new Error('摄像头或麦克风无有效轨道');
+        }
+        for (const track of granted.getTracks()) {
+          track.addEventListener('ended', () => handleTrackLoss(granted), { once: true });
+          if (withAudio) track.addEventListener('mute', () => handleTrackLoss(granted));
+        }
+        cameraFallback.classList.remove('visible');
+        return true;
+      } catch (error) {
+        if (request === cameraRequest) {
+          releaseCamera();
+          handleCameraError(error, withAudio);
+        }
+        return false;
+      } finally {
+        if (request === cameraRequest) {
+          cameraPending = false;
+          btnRetryCamera.disabled = false;
+        }
+      }
+    }
+
+    function handleTrackLoss(media) {
+      if (stream !== media) return;
+      if (recState === 'recording' || recState === 'paused' || recState === 'starting') {
+        stopRecording('摄像头或麦克风中断，正在尝试保留已录片段');
+      } else if (recState === 'countdown') {
+        cancelCountdown('摄像头或麦克风中断，请重试', false);
+        handleCameraError(null, true);
+      } else if (recState === 'idle') {
+        releaseCamera();
+        handleCameraError(null, false);
+      }
+    }
+
+    function handleCameraError(error, withAudio) {
+      const denied = ['NotAllowedError', 'PermissionDeniedError'].includes(error?.name);
+      fallbackTitle.textContent = denied ? '媒体权限被拒绝' : '摄像头或麦克风不可用';
+      const devices = withAudio ? '摄像头与麦克风' : '摄像头';
+      fallbackDesc.textContent = denied
+        ? '请在浏览器或系统设置中允许' + devices + '权限，再重试。'
+        : '设备可能已被占用或中断。请确认摄像头和麦克风可用，再重试。';
+      cameraFallback.classList.add('visible');
+    }
+
+    function startPreview() {
+      if (recState === 'idle' && !noCamera && !document.hidden && !cameraPending && !stream) initCamera();
+    }
+
+    btnRetryCamera.addEventListener('click', () => {
+      if (recState !== 'idle' || cameraPending) return;
+      noCamera = false;
+      initCamera();
+    });
+    btnPreviewNoCam.addEventListener('click', () => {
+      noCamera = true;
+      releaseCamera();
+      cameraFallback.classList.remove('visible');
+      showToast('已进入纯提词模式，点快门可重新开启摄像头和麦克风');
+    });
+
+    // ---------- Teleprompter Window Geometry (Drag & Resize) ----------
+    function dockClearance() {
+      return $('bottomDock').offsetHeight + 8;
+    }
+
+    function getDefaultWindowRect() {
+      const width = clamp(Math.round(innerWidth * 0.9), 220, 410);
+      const height = clamp(Math.round(innerHeight * 0.27), 104, 260);
+      const top = $('topHud').getBoundingClientRect().bottom;
+      return { x: (innerWidth - width) / 2, y: Math.max(54, top + 10), width, height };
+    }
+
+    function applyWindowRect(rect, persist = false) {
+      const vw = innerWidth;
+      const vh = innerHeight;
+      const dock = dockClearance();
+      const maxW = Math.max(1, vw - 16);
+      const maxH = Math.max(1, Math.min(Math.floor(vh * 0.68), vh - dock - 10));
+      const width = clamp(Math.round(rect.width), Math.min(220, maxW), maxW);
+      const height = clamp(Math.round(rect.height), Math.min(104, maxH), maxH);
+      const x = clamp(Math.round(rect.x), 8, Math.max(8, vw - width - 8));
+      const y = clamp(Math.round(rect.y), 10, Math.max(10, vh - height - dock));
+      const dimensionsChanged = !tpWindow.style.width || settings.winRect?.width !== width || settings.winRect?.height !== height;
+      tpWindow.style.left = x + 'px';
+      tpWindow.style.top = y + 'px';
+      tpWindow.style.width = width + 'px';
+      tpWindow.style.height = height + 'px';
+      settings.winRect = { x, y, width, height };
+      if (persist) saveSettings();
+      if (dimensionsChanged) recalcScrollBounds();
+    }
+
+    function initWindowRect() {
+      const rect = settings.winRect || getDefaultWindowRect();
+      applyWindowRect(rect, false);
+    }
+
+    let activeGesture = null;
+
+    function bindGesture(element, begin, move, end) {
+      const finish = (event) => {
+        if (activeGesture?.element !== element || activeGesture.id !== event.pointerId) return;
+        activeGesture = null;
+        tpWindow.classList.remove('is-interacting');
+        end();
+      };
+      element.addEventListener('pointerdown', (event) => {
+        if (activeGesture || !event.isPrimary || event.button !== 0 || event.target.closest('button')) return;
+        event.preventDefault();
+        try { element.setPointerCapture(event.pointerId); } catch (_) { return; }
+        activeGesture = { element, id: event.pointerId, x: event.clientX, y: event.clientY, start: begin() };
+        tpWindow.classList.add('is-interacting');
+      });
+      element.addEventListener('pointermove', (event) => {
+        if (activeGesture?.element !== element || activeGesture.id !== event.pointerId) return;
+        move(activeGesture.start, event.clientX - activeGesture.x, event.clientY - activeGesture.y);
+      });
+      for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) element.addEventListener(type, finish);
+      for (const type of ['touchstart', 'touchmove']) {
+        element.addEventListener(type, (event) => {
+          if (event.cancelable && !event.target.closest('button')) event.preventDefault();
+        }, { passive: false });
+      }
+    }
+
+    const getWindowRect = () => settings.winRect || getDefaultWindowRect();
+    const moveWindow = (rect, dx, dy) => applyWindowRect({ ...rect, x: rect.x + dx, y: rect.y + dy });
+    const resizeWindow = (rect, dx, dy) => applyWindowRect({
+      ...rect,
+      width: Math.min(rect.width + dx, innerWidth - rect.x - 8),
+      height: Math.min(rect.height + dy, innerHeight - rect.y - dockClearance())
+    });
+
+    bindGesture(tpDragBar, getWindowRect, moveWindow, saveSettings);
+    bindGesture(tpResizeHandle, getWindowRect, resizeWindow, saveSettings);
+    bindGesture(tpViewport, () => scrollY, (start, _, dy) => {
+      scrollY = targetScrollY = clamp(start - dy, 0, maxScrollY);
+      applyScrollTransform();
+    }, syncCharIdxToScroll);
+
+    for (const [element, action] of [[tpDragBar, moveWindow], [tpResizeHandle, resizeWindow]]) {
+      element.addEventListener('keydown', (event) => {
+        if (event.target !== element) return;
+        const direction = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[event.key];
+        if (!direction) return;
+        event.preventDefault();
+        const step = event.shiftKey ? 24 : 8;
+        action(getWindowRect(), direction[0] * step, direction[1] * step);
+        saveSettings();
+      });
+    }
+
+    function fitWindowOnResize() {
+      if (settings.winRect) applyWindowRect(settings.winRect, false);
+    }
+    window.addEventListener('resize', fitWindowOnResize);
+    if (typeof ResizeObserver === 'function') new ResizeObserver(fitWindowOnResize).observe($('bottomDock'));
+    function updateVisualViewport() {
+      const visual = window.visualViewport;
+      if (!visual || visual.scale !== 1) return;
+      document.documentElement.style.setProperty('--visual-height', visual.height + 'px');
+      document.documentElement.style.setProperty('--keyboard-offset', Math.max(0, innerHeight - visual.height - visual.offsetTop) + 'px');
+    }
+    window.visualViewport?.addEventListener('resize', updateVisualViewport);
+    window.visualViewport?.addEventListener('scroll', updateVisualViewport);
+    updateVisualViewport();
+
+    // ---------- Teleprompter Rendering & rAF Scroll Engine ----------
+    function renderActiveScript() {
+      const script = getActiveScript();
+      hudScriptTitle.textContent = script.title || '未命名稿件';
+      const estSec = estimateSeconds(script.body);
+      hudScriptMeta.textContent = estSec > 0 ? `约 ${estSec}s` : '空稿';
+
+      tpTrack.innerHTML = '';
+      charSpanMap = [];
+      let normChars = [];
+      let ci = 0;
+
+      const lines = (script.body || '').split(/\r?\n/);
+      const frag = document.createDocumentFragment();
+
+      for (const line of lines) {
+        const p = document.createElement('p');
+        if (!line.trim()) {
+          p.className = 'tp-para tp-gap';
+          p.innerHTML = '&nbsp;';
+          frag.appendChild(p);
+          continue;
+        }
+        p.className = 'tp-para';
+
+        let i = 0;
+        while (i < line.length) {
+          const ch = String.fromCodePoint(line.codePointAt(i));
+          if (/[\u4e00-\u9fff\u3400-\u4dbf]/.test(ch)) {
+            const span = document.createElement('span');
+            span.className = 'tp-tok';
+            span.textContent = ch;
+            span.dataset.ci = String(ci);
+            p.appendChild(span);
+            charSpanMap[ci] = span;
+            normChars.push(ch);
+            ci++;
+            i++;
+          } else if (/[a-zA-Z0-9]/.test(ch)) {
+            let j = i;
+            while (j < line.length && /[a-zA-Z0-9]/.test(line[j])) j++;
+            const word = line.slice(i, j);
+            const span = document.createElement('span');
+            span.className = 'tp-tok';
+            span.textContent = word;
+            span.dataset.ci = String(ci);
+            p.appendChild(span);
+            for (let k = 0; k < word.length; k++) {
+              charSpanMap[ci] = span;
+              normChars.push(word[k].toLowerCase());
+              ci++;
+            }
+            i = j;
+          } else {
+            p.appendChild(document.createTextNode(ch));
+            i += ch.length;
+          }
+        }
+        frag.appendChild(p);
+      }
+
+      tpTrack.appendChild(frag);
+      normalizedScript = normChars.join('');
+      currentCharIdx = 0;
+      recalcScrollBounds();
+    }
+
+    function recalcScrollBounds() {
+      const vh = tpViewport.clientHeight || 160;
+      const topPad = Math.round(vh * 0.2);
+      const bottomPad = Math.round(vh * 0.72);
+      tpTrack.style.paddingTop = `${topPad}px`;
+      tpTrack.style.paddingBottom = `${bottomPad}px`;
+      maxScrollY = Math.max(0, tpTrack.scrollHeight - vh);
+      scrollY = clamp(scrollY, 0, maxScrollY);
+      targetScrollY = clamp(targetScrollY, 0, maxScrollY);
+      applyScrollTransform();
+    }
+
+    function applyScrollTransform() {
+      tpTrack.style.transform = `translate3d(0, ${(-scrollY).toFixed(2)}px, 0)`;
+    }
+
+    function resetScrollToTop() {
+      scrollY = 0;
+      targetScrollY = 0;
+      currentCharIdx = 0;
+      leadRemaining = 0;
+      leadTotal = 0;
+      tpLeadTrack.classList.remove('active');
+      tpLeadHint.classList.remove('visible');
+      updateReadHighlight(-1);
+      applyScrollTransform();
+    }
+
+    tpResetBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      resetScrollToTop();
+      showToast('已回到第一行', 1200);
+    });
+
+    function syncCharIdxToScroll() {
+      if (!charSpanMap.length) return;
+      const eyeY = scrollY + (tpViewport.clientHeight || 160) * 0.24;
+      for (let i = 0; i < charSpanMap.length; i++) {
+        const sp = charSpanMap[i];
+        if (sp && sp.offsetTop >= eyeY) {
+          currentCharIdx = i;
+          updateReadHighlight(i - 1);
+          return;
+        }
+      }
+      currentCharIdx = Math.max(0, charSpanMap.length - 1);
+    }
+
+    function updateReadHighlight(lastReadIdx) {
+      const spans = tpTrack.querySelectorAll('.tp-tok');
+      for (let i = 0; i < spans.length; i++) {
+        const sp = spans[i];
+        const idx = Number(sp.dataset.ci || 0);
+        if (idx < lastReadIdx) {
+          sp.classList.add('tp-read');
+          sp.classList.remove('tp-curr');
+        } else if (idx === lastReadIdx) {
+          sp.classList.remove('tp-read');
+          sp.classList.add('tp-curr');
+        } else {
+          sp.classList.remove('tp-read', 'tp-curr');
+        }
+      }
+    }
+
+    function shouldRollNow() {
+      return recState === 'recording' || isRehearsing;
+    }
+
+    function startScrollLoop() {
+      if (scrollRafId) return;
+      lastRafAt = performance.now();
+
+      const tick = (now) => {
+        const dt = Math.min(0.1, Math.max(0, (now - lastRafAt) / 1000));
+        lastRafAt = now;
+
+        if (shouldRollNow() && activeGesture?.element !== tpViewport) {
+          if (leadRemaining > 0) {
+            leadRemaining = Math.max(0, leadRemaining - dt);
+            const ratio = leadTotal > 0 ? leadRemaining / leadTotal : 0;
+            tpLeadFill.style.transform = `scaleX(${ratio.toFixed(3)})`;
+            if (leadRemaining === 0) {
+              tpLeadTrack.classList.remove('active');
+              tpLeadHint.classList.remove('visible');
+            }
+          } else if (activeScrollMode === 'speed') {
+            if (scrollY < maxScrollY) {
+              scrollY = Math.min(maxScrollY, scrollY + settings.speed * dt);
+              targetScrollY = scrollY;
+              applyScrollTransform();
+            }
+          } else if (activeScrollMode === 'voice') {
+            const diff = targetScrollY - scrollY;
+            if (Math.abs(diff) > 0.35) {
+              scrollY += diff * Math.min(1, dt * 7.5);
+              applyScrollTransform();
+            }
+          }
+        }
+
+        if (shouldRollNow()) {
+          scrollRafId = requestAnimationFrame(tick);
+        } else {
+          scrollRafId = null;
+        }
+      };
+
+      scrollRafId = requestAnimationFrame(tick);
+    }
+
+    function stopScrollLoop() {
+      if (scrollRafId) {
+        cancelAnimationFrame(scrollRafId);
+        scrollRafId = null;
+      }
+      tpLeadTrack.classList.remove('active');
+      tpLeadHint.classList.remove('visible');
+    }
+
+    // ---------- Voice Follow (Web Speech API + Safe Auto-Fallback) ----------
+    function normalizeSpeechText(str) {
+      return (str || '')
+        .toLowerCase()
+        .replace(/[^\u4e00-\u9fff\u3400-\u4dbfa-z0-9]/g, '');
+    }
+
+    function matchTranscriptToScript(transcriptNorm) {
+      if (!transcriptNorm || !normalizedScript) return -1;
+      const tail = transcriptNorm.slice(-16);
+      if (tail.length < 2) return -1;
+
+      const winStart = Math.max(0, currentCharIdx - 3);
+      const winEnd = Math.min(normalizedScript.length, currentCharIdx + 54);
+      const windowStr = normalizedScript.slice(winStart, winEnd);
+      if (windowStr.length < 2) return -1;
+
+      // Build weighted n-grams from the latest spoken tail
+      const grams = [];
+      for (let len of [3, 2]) {
+        for (let i = Math.max(0, tail.length - 10); i <= tail.length - len; i++) {
+          const g = tail.slice(i, i + len);
+          const recencyWeight = 1 + (i / tail.length);
+          grams.push({ g, weight: (len === 3 ? 4.2 : 1.8) * recencyWeight, isTail: i >= tail.length - len - 2 });
+        }
+      }
+
+      let bestScore = 0;
+      let bestEndLocal = -1;
+
+      for (let pos = 0; pos <= windowStr.length - 2; pos++) {
+        let score = 0;
+        let maxMatchEnd = pos;
+
+        for (const item of grams) {
+          const hit = windowStr.indexOf(item.g, Math.max(0, pos - 4));
+          if (hit !== -1 && hit <= pos + 8) {
+            score += item.weight;
+            maxMatchEnd = Math.max(maxMatchEnd, hit + item.g.length);
+          }
+        }
+
+        if (score <= 0) continue;
+        // Mild penalty for jumping very far ahead on weak matches
+        const forwardDist = Math.max(0, (winStart + maxMatchEnd) - currentCharIdx);
+        score -= forwardDist * 0.08;
+
+        if (score > bestScore) {
+          bestScore = score;
+          bestEndLocal = maxMatchEnd;
+        }
+      }
+
+      if (bestScore >= 2.6 && bestEndLocal > 0) {
+        return Math.min(normalizedScript.length - 1, winStart + bestEndLocal - 1);
+      }
+      return -1;
+    }
+
+    function advanceVoiceScrollToChar(charIdx) {
+      if (charIdx < 0 || charIdx >= charSpanMap.length) return;
+      currentCharIdx = Math.max(currentCharIdx, charIdx);
+      const span = charSpanMap[currentCharIdx];
+      if (!span) return;
+      const eyeY = (tpViewport.clientHeight || 160) * 0.24;
+      const desired = clamp(span.offsetTop - eyeY + span.offsetHeight * 0.45, 0, maxScrollY);
+      targetScrollY = desired;
+      updateReadHighlight(currentCharIdx);
+    }
+
+    let speechRestartTimer = null;
+    let speechRelease = Promise.resolve();
+
+    function fallbackToSpeedMode(message) {
+      stopVoiceRecognition();
+      if (message) showToast(message, 3400);
+    }
+
+    function startVoiceRecognition() {
+      const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+      // Only rehearsal can use recognition. Capture always owns the recording microphone.
+      if (!isRehearsing || recState !== 'idle') return;
+      if (!SpeechRec || normalizedScript.length < 2) {
+        fallbackToSpeedMode('语音跟读不可用，已切换匀速滚动');
+        return;
+      }
+      activeScrollMode = 'voice';
+      speechRestartTimes = [];
+
+      const spawn = () => {
+        if (!isRehearsing || recState !== 'idle' || activeScrollMode !== 'voice') return;
+        try {
+          const rec = new SpeechRec();
+          recognition = rec;
+          rec.lang = 'zh-CN';
+          rec.continuous = true;
+          rec.interimResults = true;
+          rec.maxAlternatives = 1;
+          rec.onstart = () => {
+            if (recognition === rec) voiceBadge.classList.add('visible');
+          };
+          rec.onresult = (event) => {
+            if (recognition !== rec) return;
+            let combined = '';
+            for (let i = Math.max(0, event.results.length - 3); i < event.results.length; i++) {
+              combined += event.results[i][0]?.transcript || '';
+            }
+            const matched = matchTranscriptToScript(normalizeSpeechText(combined));
+            if (matched >= currentCharIdx) advanceVoiceScrollToChar(matched);
+          };
+          rec.onerror = (event) => {
+            if (recognition === rec && event.error !== 'no-speech') {
+              fallbackToSpeedMode('语音服务不可用，已切换匀速滚动');
+            }
+          };
+          rec.onend = () => {
+            if (recognition !== rec) return;
+            recognition = null;
+            voiceBadge.classList.remove('visible');
+            const now = performance.now();
+            speechRestartTimes = speechRestartTimes.filter(time => now - time < 5000);
+            speechRestartTimes.push(now);
+            if (speechRestartTimes.length >= 3) {
+              fallbackToSpeedMode('语音跟读连续中断，已切换匀速滚动');
+              return;
+            }
+            speechRestartTimer = setTimeout(spawn, 250);
+          };
+          rec.start();
+        } catch (_) {
+          fallbackToSpeedMode('语音跟读启动受限，已切换匀速滚动');
+        }
+      };
+      spawn();
+    }
+
+    function stopVoiceRecognition() {
+      clearTimeout(speechRestartTimer);
+      speechRestartTimer = null;
+      activeScrollMode = 'speed';
+      voiceBadge.classList.remove('visible');
+      const ref = recognition;
+      recognition = null;
+      if (!ref) return;
+      ref.onstart = ref.onerror = ref.onresult = null;
+      speechRelease = new Promise(resolve => {
+        const done = () => {
+          clearTimeout(timer);
+          ref.onend = null;
+          resolve();
+        };
+        const timer = setTimeout(done, 900);
+        ref.onend = done;
+        try { ref.abort(); } catch (_) { done(); }
+      });
+    }
+
+    // ---------- Speed, Appearance & Settings UI ----------
+    function applySpeed(nextSpeed, persist = true) {
+      settings.speed = clamp(Math.round(nextSpeed), SPEED_MIN, SPEED_MAX);
+      if (speedValueEl.textContent !== String(settings.speed)) speedValueEl.textContent = String(settings.speed);
+      sliderSpeed.value = String(settings.speed);
+      speedSliderVal.textContent = settings.speed + ' px/s';
+      btnSpeedDown.disabled = settings.speed === SPEED_MIN;
+      btnSpeedUp.disabled = settings.speed === SPEED_MAX;
+      speedPresetBtns.forEach((btn) => {
+        const preset = Number(btn.dataset.speed);
+        const selected = settings.speed === preset;
+        btn.classList.toggle('active', selected);
+        btn.setAttribute('aria-pressed', String(selected));
+      });
+      if (persist) saveSettings();
+    }
+
+    function applyAppearance() {
+      const opPct = clamp(settings.opacity, 0, 90);
+      const opFloat = opPct / 100;
+      // Ease blur from 0px at 0% opacity up to 16px at >=20% opacity
+      const blurPx = opPct <= 0 ? 0 : Math.min(16, (opPct / 20) * 16);
+      const borderAlpha = opPct === 0 ? 0.12 : 0.16;
+      const shadowAlpha = (opFloat / 0.56) * 0.45;
+      const highlightAlpha = opPct === 0 ? 0.06 : 0.12;
+
+      document.documentElement.style.setProperty('--tp-opacity', opFloat.toFixed(2));
+      document.documentElement.style.setProperty('--tp-blur', `${blurPx.toFixed(1)}px`);
+      document.documentElement.style.setProperty('--tp-border-alpha', borderAlpha.toFixed(2));
+      document.documentElement.style.setProperty('--tp-shadow-alpha', Math.min(0.65, shadowAlpha).toFixed(2));
+      document.documentElement.style.setProperty('--tp-highlight-alpha', highlightAlpha.toFixed(2));
+      document.documentElement.style.setProperty('--tp-font-size', `${settings.fontSize}px`);
+
+      sliderFontSize.value = String(settings.fontSize);
+      fontSizeVal.textContent = `${settings.fontSize} px`;
+      sliderOpacity.value = String(settings.opacity);
+      opacityVal.textContent = `${settings.opacity}%`;
+      sliderLeadDelay.value = String(settings.leadDelay);
+      leadDelayVal.textContent = `${settings.leadDelay.toFixed(1)} 秒`;
+      switchVoice.setAttribute('aria-checked', settings.voiceFollow ? 'true' : 'false');
+      settingVoiceDot.classList.toggle('on', Boolean(settings.voiceFollow));
+      recalcScrollBounds();
+    }
+
+    btnSpeedDown.addEventListener('click', () => applySpeed(settings.speed - 4));
+    btnSpeedUp.addEventListener('click', () => applySpeed(settings.speed + 4));
+    speedPresetBtns.forEach((btn) => {
+      btn.addEventListener('click', () => applySpeed(Number(btn.dataset.speed)));
+    });
+
+    sliderSpeed.addEventListener('input', (event) => applySpeed(Number(event.target.value), false));
+    sliderSpeed.addEventListener('change', saveSettings);
+
+    sliderFontSize.addEventListener('input', (e) => {
+      settings.fontSize = Number(e.target.value);
+      applyAppearance();
+      saveSettings();
+    });
+
+    sliderOpacity.addEventListener('input', (e) => {
+      settings.opacity = Number(e.target.value);
+      applyAppearance();
+      saveSettings();
+    });
+
+    sliderLeadDelay.addEventListener('input', (e) => {
+      settings.leadDelay = Number(e.target.value);
+      applyAppearance();
+      saveSettings();
+    });
+
+    switchVoice.addEventListener('click', () => {
+      settings.voiceFollow = !settings.voiceFollow;
+      applyAppearance();
+      saveSettings();
+      if (settings.voiceFollow) {
+        const hasApi = Boolean(window.SpeechRecognition || window.webkitSpeechRecognition);
+        showToast(hasApi ? '试滚时使用语音跟读，录像时使用匀速滚动' : '当前浏览器不支持语音识别，将使用匀速滚动');
+      } else {
+        showToast('已切回匀速滚屏');
+        if (shouldRollNow()) {
+          stopVoiceRecognition();
+          activeScrollMode = 'speed';
+        }
+      }
+    });
+
+    btnResetWindow.addEventListener('click', () => {
+      applyWindowRect(getDefaultWindowRect(), true);
+      showToast('悬浮窗位置与大小已重置');
+    });
+
+    // ---------- Wake Lock ----------
+    let wakeGeneration = 0;
+    let wakePending = null;
+
+    function needsWakeLock() {
+      return !document.hidden && (isRehearsing || ['preparing', 'countdown', 'starting', 'recording', 'paused'].includes(recState));
+    }
+
+    async function requestWakeLock() {
+      if (!navigator.wakeLock || !needsWakeLock() || wakeLock || wakePending === wakeGeneration) return;
+      const generation = wakeGeneration;
+      wakePending = generation;
+      try {
+        const lock = await navigator.wakeLock.request('screen');
+        if (generation !== wakeGeneration || !needsWakeLock()) {
+          await lock.release();
+          return;
+        }
+        if (lock.released) return;
+        wakeLock = lock;
+        lock.addEventListener('release', () => {
+          if (wakeLock === lock) wakeLock = null;
+        }, { once: true });
+      } catch (_) {
+        // Capture remains usable when the operating system denies a lock.
+      } finally {
+        if (wakePending === generation) wakePending = null;
+      }
+    }
+
+    function releaseWakeLock() {
+      wakeGeneration++;
+      const lock = wakeLock;
+      wakeLock = null;
+      if (lock) lock.release().catch(() => {});
+    }
+
+    // ---------- Bottom Sheets (Scripts & Settings) ----------
+    let openSheetEl = null;
+    let sheetTrigger = null;
+
+    function openSheet(sheetEl) {
+      closeSheets();
+      stopRehearsal();
+      sheetTrigger = document.activeElement;
+      openSheetEl = sheetEl;
+      sheetBackdrop.classList.add('visible');
+      sheetEl.classList.add('open');
+      sheetEl.setAttribute('aria-hidden', 'false');
+      if (sheetEl === scriptsSheet) renderScriptsSheet();
+      (sheetEl === scriptsSheet ? btnCloseScripts : btnCloseSettings).focus();
+    }
+
+    function closeSheets() {
+      if (openSheetEl) {
+        if (openSheetEl.contains(document.activeElement)) {
+          if (sheetTrigger instanceof HTMLElement && !sheetTrigger.disabled && !document.hidden) sheetTrigger.focus();
+          if (openSheetEl.contains(document.activeElement)) document.activeElement.blur();
+        }
+        openSheetEl.classList.remove('open');
+        openSheetEl.setAttribute('aria-hidden', 'true');
+        openSheetEl = null;
+        sheetTrigger = null;
+      }
+      sheetBackdrop.classList.remove('visible');
+    }
+
+    document.addEventListener('keydown', (event) => {
+      const modal = openSheetEl ||
+        (['preparing', 'countdown'].includes(recState) ? countdownOverlay : null) ||
+        (recState === 'review' ? reviewOverlay : null) ||
+        (cameraFallback.classList.contains('visible') ? cameraFallback : null);
+      if (!modal) return;
+      if (event.key === 'Escape') {
+        if (openSheetEl) closeSheets();
+        else if (modal === countdownOverlay) cancelCountdown('已取消开拍');
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const focusable = [...modal.querySelectorAll('button:not(:disabled), input, textarea, a[href], video[controls]')];
+      if (!focusable.length) return;
+      const index = focusable.indexOf(document.activeElement);
+      if (index < 0 || (event.shiftKey ? index === 0 : index === focusable.length - 1)) {
+        event.preventDefault();
+        focusable[event.shiftKey ? focusable.length - 1 : 0].focus();
+      }
+    });
+
+    sheetBackdrop.addEventListener('click', closeSheets);
+    btnCloseScripts.addEventListener('click', closeSheets);
+    btnCloseSettings.addEventListener('click', closeSheets);
+
+    btnTopScript.addEventListener('click', () => {
+      if (recState !== 'idle') return;
+      openSheet(scriptsSheet);
+    });
+
+    btnSettings.addEventListener('click', () => {
+      if (['idle', 'recording', 'paused'].includes(recState)) openSheet(settingsSheet);
+    });
+
+    function renderScriptsSheet() {
+      const active = getActiveScript();
+      scriptListEl.innerHTML = '';
+
+      scripts.forEach((sc) => {
+        const card = document.createElement('div');
+        card.className = `script-card${sc.id === active.id ? ' active' : ''}`;
+
+        const top = document.createElement('div');
+        top.className = 'script-card-top';
+
+        const selBtn = document.createElement('button');
+        selBtn.type = 'button';
+        selBtn.className = 'script-card-select';
+        selBtn.setAttribute('aria-pressed', String(sc.id === active.id));
+        const chars = countSpokenChars(sc.body);
+        const est = estimateSeconds(sc.body);
+        selBtn.innerHTML = `
+          <div class="script-card-name">${escapeHtml(sc.title || '未命名稿件')}</div>
+          <div class="script-card-meta">${chars} 字 · 约 ${est} 秒</div>
+        `;
+        selBtn.addEventListener('click', () => {
+          settings.activeScriptId = sc.id;
+          saveSettings();
+          resetScrollToTop();
+          renderActiveScript();
+          renderScriptsSheet();
+          scriptListEl.querySelector('.script-card.active button')?.focus();
+        });
+
+        const delBtn = document.createElement('button');
+        delBtn.type = 'button';
+        delBtn.className = 'script-del-btn';
+        delBtn.setAttribute('aria-label', '删除稿件');
+        delBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>`;
+        delBtn.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          if (scripts.length <= 1) {
+            showToast('至少保留一篇稿件，可直接修改内容');
+            return;
+          }
+          if (!confirm(`确定删除「${sc.title || '未命名稿件'}」吗？`)) return;
+          scripts = scripts.filter((item) => item.id !== sc.id);
+          if (settings.activeScriptId === sc.id) {
+            settings.activeScriptId = scripts[0].id;
+            saveSettings();
+            resetScrollToTop();
+          }
+          saveScripts();
+          renderActiveScript();
+          renderScriptsSheet();
+          scriptListEl.querySelector('.script-card.active button')?.focus();
+        });
+
+        top.appendChild(selBtn);
+        top.appendChild(delBtn);
+        card.appendChild(top);
+        scriptListEl.appendChild(card);
+      });
+
+      scriptTitleInput.value = active.title || '';
+      scriptBodyInput.value = active.body || '';
+      updateEditorStats(active.body || '');
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function updateEditorStats(text) {
+      const chars = countSpokenChars(text);
+      const sec = estimateSeconds(text);
+      editorCharStat.textContent = `${chars} 字`;
+      editorDurStat.textContent = `预计口播 ${sec} 秒`;
+    }
+
+    btnNewScript.addEventListener('click', () => {
+      const newScript = {
+        id: 'sc_' + Date.now() + '_' + Math.random().toString(36).slice(2),
+        title: `新稿件 ${scripts.length + 1}`,
+        body: '',
+        updatedAt: Date.now()
+      };
+      scripts.unshift(newScript);
+      settings.activeScriptId = newScript.id;
+      saveScripts();
+      saveSettings();
+      resetScrollToTop();
+      renderActiveScript();
+      renderScriptsSheet();
+      scriptTitleInput.focus();
+    });
+
+    scriptTitleInput.addEventListener('input', () => {
+      const active = getActiveScript();
+      active.title = scriptTitleInput.value;
+      active.updatedAt = Date.now();
+      saveScripts();
+      hudScriptTitle.textContent = active.title || '未命名稿件';
+      const activeCardName = scriptListEl.querySelector('.script-card.active .script-card-name');
+      if (activeCardName) activeCardName.textContent = active.title || '未命名稿件';
+    });
+
+    scriptBodyInput.addEventListener('input', () => {
+      const active = getActiveScript();
+      active.body = scriptBodyInput.value;
+      active.updatedAt = Date.now();
+      saveScripts();
+      updateEditorStats(active.body);
+      renderActiveScript();
+      const activeCardMeta = scriptListEl.querySelector('.script-card.active .script-card-meta');
+      if (activeCardMeta) {
+        activeCardMeta.textContent = `${countSpokenChars(active.body)} 字 · 约 ${estimateSeconds(active.body)} 秒`;
+      }
+    });
+
+    // ---------- Rehearsal Mode (Test Scroll Without Recording) ----------
+    btnRehearse.addEventListener('click', () => {
+      if (recState !== 'idle') return;
+      if (!isRehearsing && !getActiveScript().body.trim()) {
+        showToast('请先在稿件库输入提词内容');
+        return;
+      }
+      if (isRehearsing) {
+        stopRehearsal();
+      } else {
+        isRehearsing = true;
+        btnRehearse.textContent = '停止试滚';
+        btnRehearse.classList.add('active');
+        btnRehearse.setAttribute('aria-pressed', 'true');
+        beginScrollEngine(false);
+        requestWakeLock();
+      }
+    });
+
+    function stopRehearsal() {
+      if (!isRehearsing) return;
+      isRehearsing = false;
+      btnRehearse.textContent = '试滚';
+      btnRehearse.classList.remove('active');
+      btnRehearse.setAttribute('aria-pressed', 'false');
+      stopScrollLoop();
+      stopVoiceRecognition();
+      releaseWakeLock();
+    }
+
+    function beginScrollEngine(withLeadDelay) {
+      if (withLeadDelay && settings.leadDelay > 0 && getActiveScript().body.trim()) {
+        leadTotal = settings.leadDelay;
+        leadRemaining = settings.leadDelay;
+        tpLeadFill.style.transform = 'scaleX(1)';
+        tpLeadTrack.classList.add('active');
+        tpLeadHint.textContent = `起读缓冲 ${settings.leadDelay.toFixed(1)}s`;
+        tpLeadHint.classList.add('visible');
+      } else {
+        leadTotal = 0;
+        leadRemaining = 0;
+        tpLeadTrack.classList.remove('active');
+        tpLeadHint.classList.remove('visible');
+      }
+
+      activeScrollMode = 'speed';
+      if (settings.voiceFollow && isRehearsing) startVoiceRecognition();
+      else if (settings.voiceFollow && withLeadDelay) showToast('录像使用匀速滚动，麦克风用于录音');
+      startScrollLoop();
+    }
+
+    // ---------- Recording format and WebM metadata ----------
+    const MIME_CANDIDATES = [
+      'video/mp4;codecs=avc1,mp4a.40.2',
+      'video/mp4;codecs=avc1.42001f,mp4a.40.2',
+      'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+      'video/mp4;codecs=avc1,mp4a',
+      'video/mp4',
+      'video/webm;codecs=vp8,opus',
+      'video/webm;codecs=vp9,opus',
+      'video/webm',
+      ''
+    ];
+
+    async function identifyVideo(blob) {
+      const bytes = new Uint8Array(await blob.slice(0, 12).arrayBuffer());
+      if (bytes[0] === 0x1a && bytes[1] === 0x45 && bytes[2] === 0xdf && bytes[3] === 0xa3) {
+        return 'webm';
+      }
+      if (String.fromCharCode(...bytes.subarray(4, 8)) === 'ftyp') return 'mp4';
+      throw new Error('无法识别录像容器');
+    }
+
+    function readVint(bytes, offset, isId = false) {
+      const first = bytes[offset];
+      let marker = 128;
+      let width = 1;
+      while (marker && !(first & marker)) {
+        marker >>= 1;
+        width++;
+      }
+      if (!marker || width > (isId ? 4 : 8) || offset + width > bytes.length) {
+        throw new Error('EBML 元素头不完整');
+      }
+      let value = BigInt(isId ? first : first & (marker - 1));
+      for (let i = 1; i < width; i++) value = (value << 8n) | BigInt(bytes[offset + i]);
+      const unknown = !isId && value === (1n << BigInt(7 * width)) - 1n;
+      if (!unknown && value > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error('EBML 元素过大');
+      return { value: unknown ? null : Number(value), width };
+    }
+
+    function encodeSize(value, width = 1) {
+      let n = BigInt(value);
+      while (width < 8 && n >= (1n << BigInt(width * 7)) - 1n) width++;
+      n |= 1n << BigInt(width * 7);
+      return encodeUint(n, width);
+    }
+
+    function encodeUint(value, width) {
+      const bytes = new Uint8Array(width);
+      let n = BigInt(value);
+      for (let i = width - 1; i >= 0; i--) {
+        bytes[i] = Number(n & 255n);
+        n >>= 8n;
+      }
+      return bytes;
+    }
+
+    function uint(bytes) {
+      let value = 0;
+      for (const byte of bytes) value = value * 256 + byte;
+      if (!Number.isSafeInteger(value)) throw new Error('WebM 时间戳超出精度范围');
+      return value;
+    }
+
+    // Read only element headers and packet timing bytes. Large video payloads stay in Blob storage.
+    class MediaBlobReader {
+      constructor(blob) {
+        this.blob = blob;
+        this.bytes = new Uint8Array();
+        this.offset = 0;
+      }
+
+      async read(offset, length) {
+        if (offset < this.offset || offset + length > this.offset + this.bytes.length) {
+          this.offset = offset;
+          this.bytes = new Uint8Array(await this.blob.slice(offset, offset + Math.max(length, 262144)).arrayBuffer());
+        }
+        if (offset + length > this.offset + this.bytes.length) throw new Error('WebM 数据不完整');
+        return this.bytes.subarray(offset - this.offset, offset - this.offset + length);
+      }
+
+      async element(start, limit) {
+        const bytes = await this.read(start, Math.min(12, limit - start));
+        const id = readVint(bytes, 0, true);
+        const size = readVint(bytes, id.width);
+        const sizeAt = start + id.width;
+        const data = sizeAt + size.width;
+        const end = size.value === null ? limit : data + size.value;
+        if (end > limit) throw new Error('WebM 元素越界');
+        return { id: id.value, start, sizeAt, data, end, unknown: size.value === null };
+      }
+
+      async *children(parent) {
+        for (let pos = parent.data; pos < parent.end;) {
+          const child = await this.element(pos, parent.end);
+          if (child.unknown) throw new Error('WebM 子元素大小未知');
+          yield child;
+          pos = child.end;
+        }
+      }
+
+      async number(element) {
+        const length = element.end - element.data;
+        if (length < 1 || length > 8) throw new Error('WebM 整数长度错误');
+        return uint(await this.read(element.data, length));
+      }
+    }
+
+    async function inspectMp4(blob) {
+      const reader = new MediaBlobReader(blob);
+      async function* boxes(start, limit) {
+        for (let pos = start; pos < limit;) {
+          if (limit - pos < 8) throw new Error('MP4 box 不完整');
+          const header = await reader.read(pos, 8);
+          const type = String.fromCharCode(...header.subarray(4, 8));
+          const shortSize = uint(header.subarray(0, 4));
+          let data = pos + 8;
+          let end = shortSize ? pos + shortSize : limit;
+          if (shortSize === 1) {
+            end = pos + uint(await reader.read(data, 8));
+            data += 8;
+          }
+          if (end < data || end > limit) throw new Error('MP4 box 越界');
+          yield { type, data, end };
+          pos = end;
+        }
+      }
+      const handlers = new Set();
+      let hasMedia = false;
+      for await (const box of boxes(0, blob.size)) {
+        if (box.type === 'mdat' && box.end > box.data) hasMedia = true;
+        if (box.type !== 'moov') continue;
+        for await (const track of boxes(box.data, box.end)) {
+          if (track.type !== 'trak') continue;
+          for await (const media of boxes(track.data, track.end)) {
+            if (media.type !== 'mdia') continue;
+            for await (const field of boxes(media.data, media.end)) {
+              if (field.type === 'hdlr' && field.end - field.data >= 12) {
+                handlers.add(String.fromCharCode(...await reader.read(field.data + 8, 4)));
+                break;
+              }
+            }
+          }
+        }
+      }
+      if (!hasMedia || !handlers.has('vide')) throw new Error('MP4 缺少有效视频数据');
+      return { hasAudio: handlers.has('soun') };
+    }
+
+    const WEBM_SEGMENT_IDS = new Set([
+      0x114d9b74, 0x1549a966, 0x1f43b675, 0x1654ae6b,
+      0x1c53bb6b, 0x1941a469, 0x1043a770, 0x1254c367
+    ]);
+
+    async function readWebmTracks(reader, element, tracks) {
+      for await (const entry of reader.children(element)) {
+        if (entry.id !== 0xae) continue;
+        const track = { count: 0, last: -Infinity, deltas: [] };
+        for await (const field of reader.children(entry)) {
+          if (field.id === 0xd7) track.number = await reader.number(field);
+          if (field.id === 0x83) track.type = await reader.number(field);
+          if (field.id === 0x23e383) track.defaultNs = await reader.number(field);
+          if (field.id === 0x56aa) track.delayNs = await reader.number(field);
+          if (field.id === 0x86 && field.end - field.data <= 32) {
+            track.codec = new TextDecoder().decode(await reader.read(field.data, field.end - field.data));
+          }
+        }
+        if (track.type === 1 || track.type === 2) tracks.set(track.number, track);
+      }
+    }
+
+    function opusPacketMs(bytes, at) {
+      if (at >= bytes.length) return 0;
+      const toc = bytes[at];
+      const config = toc >> 3;
+      const frameMs = config >= 16 ? 2.5 * (2 ** (config & 3))
+        : config >= 12 ? 10 * (2 ** (config & 1)) : [10, 20, 40, 60][config & 3];
+      const code = toc & 3;
+      const frames = code === 0 ? 1 : code === 3 ? (bytes[at + 1] || 0) & 63 : 2;
+      const size = frameMs * frames;
+      return size <= 120 ? size : 0;
+    }
+
+    async function readWebmBlock(reader, element, ticks, tracks, duration, discardNs = 0) {
+      const bytes = await reader.read(element.data, Math.min(13, element.end - element.data));
+      const id = readVint(bytes, 0);
+      const track = tracks.get(id.value);
+      if (!track) return;
+      const p = id.width;
+      if (p + 3 >= bytes.length) throw new Error('WebM 数据包不完整');
+      const relative = (bytes[p] << 24 >> 16) | bytes[p + 1];
+      const time = ticks + relative;
+      track.first = Math.min(track.first ?? time, time);
+      if (time < track.last) return;
+      const delta = time - track.last;
+      if (Number.isFinite(delta) && delta > 0) {
+        track.deltas.push(delta);
+        if (track.deltas.length > 12) track.deltas.shift();
+      }
+      track.last = time;
+      track.count++;
+      track.lastDuration = duration;
+      track.lastOpusMs = track.codec === 'A_OPUS' && !(bytes[p + 2] & 6) ? opusPacketMs(bytes, p + 3) : 0;
+      track.discardNs = discardNs;
+    }
+
+    async function readWebmCluster(reader, element, tracks) {
+      const cluster = { end: element.end, crc: [] };
+      let ticks;
+      for (let pos = element.data; pos < element.end;) {
+        const child = await reader.element(pos, element.end);
+        if (element.unknown && WEBM_SEGMENT_IDS.has(child.id)) {
+          cluster.end = pos;
+          break;
+        }
+        if (child.unknown) throw new Error('WebM Cluster 数据不完整');
+        if (child.id === 0xe7) {
+          ticks = await reader.number(child);
+          cluster.time = child;
+          cluster.ticks = ticks;
+        } else if (child.id === 0xbf) {
+          cluster.crc.push(child);
+        } else if (child.id === 0xa3 || child.id === 0xa0) {
+          if (ticks === undefined) throw new Error('WebM Cluster 缺少时间戳');
+          if (child.id === 0xa3) {
+            await readWebmBlock(reader, child, ticks, tracks, 0);
+          } else {
+            let block;
+            let duration = 0;
+            let discardNs = 0;
+            for await (const field of reader.children(child)) {
+              if (field.id === 0xa1) block = field;
+              if (field.id === 0x9b) duration = await reader.number(field);
+              if (field.id === 0x75a2) {
+                const padding = await reader.read(field.data, field.end - field.data);
+                if (padding.length && !(padding[0] & 0x80)) discardNs = uint(padding);
+              }
+            }
+            if (block) await readWebmBlock(reader, block, ticks, tracks, duration, discardNs);
+          }
+        }
+        pos = child.end;
+      }
+      return cluster;
+    }
+
+    async function fixWebmDuration(blob, elapsedMs) {
+      const reader = new MediaBlobReader(blob);
+      const header = await reader.element(0, blob.size);
+      if (header.id !== 0x1a45dfa3 || header.unknown) throw new Error('缺少 WebM 文件头');
+      for await (const field of reader.children(header)) {
+        if (field.id === 0x4282) {
+          const type = new TextDecoder().decode(await reader.read(field.data, field.end - field.data));
+          if (type !== 'webm') throw new Error('媒体文件不是 WebM');
+        }
+      }
+      const segment = await reader.element(header.end, blob.size);
+      if (segment.id !== 0x18538067) throw new Error('缺少 WebM Segment');
+
+      let scale = 1000000;
+      let info;
+      let durationField;
+      const tracks = new Map();
+      const clusters = [];
+      const infoCrc = [];
+      const segmentCrc = [];
+      const indexes = [];
+      for (let pos = segment.data; pos < segment.end;) {
+        const element = await reader.element(pos, segment.end);
+        pos = element.end;
+        if (element.id === 0x1f43b675) {
+          const cluster = await readWebmCluster(reader, element, tracks);
+          clusters.push(cluster);
+          pos = cluster.end;
+          continue;
+        }
+        if (element.unknown) throw new Error('WebM Segment 子元素大小未知');
+        if (element.id === 0x114d9b74 || element.id === 0x1c53bb6b) indexes.push(element);
+        if (element.id === 0xbf) segmentCrc.push(element);
+        if (element.id === 0x1654ae6b) await readWebmTracks(reader, element, tracks);
+        if (element.id === 0x1549a966) {
+          info = element;
+          for await (const field of reader.children(info)) {
+            if (field.id === 0x2ad7b1) scale = await reader.number(field);
+            if (field.id === 0x4489) durationField = field;
+            if (field.id === 0xbf) infoCrc.push(field);
+          }
+        }
+      }
+      const timed = [...tracks.values()].filter(track => track.count);
+      if (!info || !(scale > 0) || !timed.some(track => track.type === 1)) {
+        throw new Error('WebM 缺少有效视频时间轴');
+      }
+      const tickMs = scale / 1000000;
+      const lastTick = Math.max(...timed.map(track => track.last));
+      // Rebase only a clear clock-origin error. Legitimate delayed tracks retain their offset.
+      let origin = Math.min(...timed.map(track => track.first));
+      for (const cluster of clusters) {
+        if (cluster.time) origin = Math.min(origin, cluster.ticks);
+      }
+      const absurdOrigin = origin * tickMs > Math.max(60000, elapsedMs * 4) &&
+        (lastTick - origin) * tickMs <= elapsedMs + Math.max(1500, elapsedMs * 0.25);
+      if (!absurdOrigin) origin = 0;
+
+      const durationMs = Math.max(...timed.map(track => {
+        const deltas = [...track.deltas].sort((a, b) => a - b);
+        const cadenceMs = (deltas[Math.floor(deltas.length / 2)] || 0) * tickMs;
+        const tailMs = track.lastDuration * tickMs || track.lastOpusMs ||
+          (track.defaultNs || 0) / 1000000 || cadenceMs || 1000 / 30;
+        return (track.last - origin) * tickMs + tailMs - ((track.delayNs || 0) + track.discardNs) / 1000000;
+      }));
+      if (!Number.isFinite(durationMs) || durationMs <= 0) throw new Error('WebM 时长无效');
+
+      const edits = [];
+      const replace = (start, end, bytes) => edits.push({ start, end, bytes });
+      // A same-size Void leaves unrelated offsets and packet data intact.
+      const voidElement = (element) => {
+        const size = encodeSize(element.end - element.data, element.data - element.sizeAt);
+        replace(element.start, element.data, new Uint8Array([0xec, ...size]));
+      };
+      const width = durationField ? durationField.end - durationField.data : 8;
+      if (width !== 4 && width !== 8) throw new Error('WebM Duration 长度无效');
+      const value = new Uint8Array(width);
+      const view = new DataView(value.buffer);
+      if (width === 4) view.setFloat32(0, durationMs / tickMs);
+      else view.setFloat64(0, durationMs / tickMs);
+
+      let sizeDelta = 0;
+      if (durationField) {
+        const old = await reader.read(durationField.data, width);
+        const oldView = new DataView(old.buffer, old.byteOffset, width);
+        const oldMs = (width === 4 ? oldView.getFloat32(0) : oldView.getFloat64(0)) * tickMs;
+        // Keep a valid muxer duration when it agrees within the final video-frame cadence.
+        const tolerance = Math.max(1, ...timed.filter(track => track.type === 1).map(track => {
+          const deltas = [...track.deltas].sort((a, b) => a - b);
+          return Math.min(100, (deltas[Math.floor(deltas.length / 2)] || 0) * tickMs);
+        }));
+        if (!origin && oldMs > 0 && Math.abs(oldMs - durationMs) <= tolerance) {
+          return { blob, durationMs: oldMs, hasAudio: timed.some(track => track.type === 2) };
+        }
+        replace(durationField.data, durationField.end, value);
+      } else {
+        const field = new Uint8Array([0x44, 0x89, 0x88, ...value]);
+        const size = encodeSize(info.end - info.data + field.length, info.data - info.sizeAt);
+        sizeDelta = field.length + size.length - (info.data - info.sizeAt);
+        replace(info.sizeAt, info.data, size);
+        replace(info.end, info.end, field);
+        if (!segment.unknown) {
+          replace(segment.sizeAt, segment.data, encodeSize(segment.end - segment.data + sizeDelta, segment.data - segment.sizeAt));
+        }
+      }
+      if (origin) {
+        for (const cluster of clusters) {
+          if (!cluster.time) continue;
+          const { data, end } = cluster.time;
+          replace(data, end, encodeUint(cluster.ticks - origin, end - data));
+          cluster.crc.forEach(voidElement);
+        }
+      }
+      if (sizeDelta || origin) {
+        const editIndex = async (container) => {
+          const checksums = [];
+          const startCount = edits.length;
+          for await (const field of reader.children(container)) {
+            if (field.id === 0xbf) checksums.push(field);
+            if (field.id === 0x4dbb || field.id === 0xbb || field.id === 0xb7 || field.id === 0xdb) {
+              await editIndex(field);
+            }
+            const isPosition = field.id === 0x53ac || field.id === 0xf1 || field.id === 0x97;
+            const isTime = field.id === 0xb3 || field.id === 0x96;
+            if ((!isPosition || !sizeDelta) && (!isTime || !origin)) continue;
+            const before = await reader.number(field);
+            const after = isTime ? Math.max(0, before - origin)
+              : before >= info.end - segment.data ? before + sizeDelta : before;
+            if (after === before) continue;
+            const width = field.end - field.data;
+            if (BigInt(after) >= 1n << BigInt(8 * width)) throw new Error('WebM index offset overflow');
+            replace(field.data, field.end, encodeUint(after, width));
+          }
+          if (edits.length > startCount) checksums.forEach(voidElement);
+        };
+        for (const index of indexes) {
+          const startCount = edits.length;
+          try {
+            await editIndex(index);
+          } catch (_) {
+            edits.length = startCount;
+            voidElement(index);
+          }
+        }
+      }
+      infoCrc.forEach(voidElement);
+      segmentCrc.forEach(voidElement);
+
+      const parts = [];
+      let cursor = 0;
+      for (const edit of edits.sort((a, b) => a.start - b.start || a.end - b.end)) {
+        parts.push(blob.slice(cursor, edit.start), edit.bytes);
+        cursor = edit.end;
+      }
+      parts.push(blob.slice(cursor));
+      return { blob: new Blob(parts, { type: 'video/webm' }), durationMs, hasAudio: timed.some(track => track.type === 2) };
+    }
+
+    function updateDockForState() {
+      const recordingOrPaused = recState === 'recording' || recState === 'paused';
+      const idle = recState === 'idle';
+      const canStop = recordingOrPaused || recState === 'starting';
+      topIdleBar.style.display = idle ? 'flex' : 'none';
+      btnShutter.disabled = !idle && !canStop;
+      btnLeftAction.disabled = !idle && !recordingOrPaused;
+      btnSettings.disabled = !idle && !recordingOrPaused;
+      processingStatus.hidden = recState !== 'finalizing';
+      recTimerPill.classList.toggle('visible', recordingOrPaused);
+      recTimerPill.classList.toggle('paused', recState === 'paused');
+      btnShutter.classList.toggle('recording', canStop);
+      btnShutter.setAttribute('aria-label', canStop ? '停止录制' : '开始录制');
+
+      if (!recordingOrPaused) {
+        btnLeftAction.className = 'dock-pill-btn';
+        btnLeftAction.innerHTML = `
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="8" y1="13" x2="16" y2="13"/>
+            <line x1="8" y1="17" x2="14" y2="17"/>
+          </svg>
+          <span>稿件库</span>
+        `;
+      } else if (recState === 'recording') {
+        btnLeftAction.className = 'dock-pill-btn pause-mode';
+        btnLeftAction.innerHTML = `
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <rect x="6" y="5" width="4" height="14" rx="1"/>
+            <rect x="14" y="5" width="4" height="14" rx="1"/>
+          </svg>
+          <span>暂停</span>
+        `;
+      } else {
+        btnLeftAction.className = 'dock-pill-btn pause-mode is-paused';
+        btnLeftAction.innerHTML = `
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <polygon points="7,5 19,12 7,19"/>
+          </svg>
+          <span>继续</span>
+        `;
+      }
+    }
+
+    // ---------- Countdown, recording and review ----------
+    const MAX_RECORDING_BYTES = 160 * 1024 * 1024;
+    let recording = null;
+    let reviewFile = null;
+    let sharePending = false;
+    let reviewInfo = null;
+    let takeGeneration = 0;
+
+    function updateRecTimerLoop() {
+      timerRafId = null;
+      if (recState !== 'recording') return;
+      const label = formatTime(activeRecordedMs + performance.now() - activeSegmentStart);
+      if (recTimerText.textContent !== label) recTimerText.textContent = label;
+      timerRafId = requestAnimationFrame(updateRecTimerLoop);
+    }
+
+    function stopRecTimer() {
+      if (timerRafId !== null) cancelAnimationFrame(timerRafId);
+      timerRafId = null;
+    }
+
+    btnLeftAction.addEventListener('click', () => {
+      if (recState === 'idle') openSheet(scriptsSheet);
+      else if (recState === 'recording') pauseRecording();
+      else if (recState === 'paused') resumeRecording();
+    });
+
+    btnShutter.addEventListener('click', () => {
+      if (recState === 'idle') startCountdownAndRecord();
+      else if (['recording', 'paused', 'starting'].includes(recState)) stopRecording();
+    });
+
+    async function startCountdownAndRecord() {
+      if (typeof MediaRecorder === 'undefined') {
+        showToast('当前浏览器不支持网页录像，请升级或更换 Safari / Chrome');
+        return;
+      }
+      const generation = ++takeGeneration;
+      recState = 'preparing';
+      stopRehearsal();
+      closeSheets();
+      noCamera = false;
+      resetScrollToTop();
+      updateDockForState();
+      countdownOverlay.classList.add('visible');
+      countdownCancel.focus();
+      countdownNumber.textContent = '…';
+      countdownStatus.textContent = '正在开启摄像头和麦克风';
+      requestWakeLock();
+      await speechRelease;
+      if (generation !== takeGeneration || recState !== 'preparing') return;
+      const ready = await initCamera(true);
+      if (generation !== takeGeneration || recState !== 'preparing') return;
+      if (!ready || !usableTrack(stream, 'audio')) {
+        cancelCountdown(null, false);
+        return;
+      }
+
+      cameraFallback.classList.remove('visible');
+      recState = 'countdown';
+      countdownStatus.textContent = '即将开拍';
+      let count = 3;
+      renderCountdownDigit(count);
+      countdownTimer = setInterval(() => {
+        count--;
+        if (count > 0) {
+          renderCountdownDigit(count);
+          return;
+        }
+        clearInterval(countdownTimer);
+        countdownTimer = null;
+        countdownOverlay.classList.remove('visible');
+        startActualRecording();
+      }, 1000);
+    }
+
+    function cancelCountdown(message, restartPreview = true) {
+      takeGeneration++;
+      clearInterval(countdownTimer);
+      countdownTimer = null;
+      countdownOverlay.classList.remove('visible');
+      recState = 'idle';
+      releaseCamera();
+      releaseWakeLock();
+      updateDockForState();
+      if (!document.hidden) btnShutter.focus();
+      if (restartPreview) startPreview();
+      if (message) showToast(message);
+    }
+
+    function renderCountdownDigit(num) {
+      countdownNumber.textContent = String(num);
+      countdownNumber.style.animation = 'none';
+      void countdownNumber.offsetWidth;
+      countdownNumber.style.animation = '';
+    }
+
+    countdownOverlay.addEventListener('click', () => {
+      if (recState === 'preparing' || recState === 'countdown') cancelCountdown('已取消开拍');
+    });
+
+    function startActualRecording() {
+      if (document.hidden || !usableTrack(stream, 'video') || !usableTrack(stream, 'audio')) {
+        cancelCountdown('摄像头或麦克风未就绪，请重试');
+        return;
+      }
+      recState = 'starting';
+      updateDockForState();
+      btnShutter.focus();
+      activeRecordedMs = 0;
+
+      const candidates = MIME_CANDIDATES.filter(mime => {
+        if (!mime || typeof MediaRecorder.isTypeSupported !== 'function') return true;
+        try { return MediaRecorder.isTypeSupported(mime); } catch (_) { return false; }
+      });
+      const attempt = () => {
+        while (candidates.length && recState === 'starting') {
+          const mimeType = candidates.shift();
+          let recorder;
+          try {
+            const options = mimeType ? { mimeType, videoBitsPerSecond: 4500000 } : { videoBitsPerSecond: 4500000 };
+            recorder = new MediaRecorder(stream, options);
+          } catch (_) {
+            continue;
+          }
+
+          const take = { recorder, chunks: [], bytes: 0, started: false, timeout: null, notice: '' };
+          recording = take;
+          recorder.onstart = () => {
+            if (recording !== take || recState !== 'starting') return;
+            clearTimeout(take.timeout);
+            take.started = true;
+            activeSegmentStart = performance.now();
+            recState = 'recording';
+            updateDockForState();
+            recTimerText.textContent = '00:00';
+            timerRafId = requestAnimationFrame(updateRecTimerLoop);
+            beginScrollEngine(true);
+          };
+          recorder.ondataavailable = (event) => {
+            if (recording !== take || !event.data?.size) return;
+            take.chunks.push(event.data);
+            take.bytes += event.data.size;
+            if (take.bytes >= MAX_RECORDING_BYTES && recState === 'recording') {
+              stopRecording('本段录像已达到页面的内存保护阈值，已停止录制');
+            }
+          };
+          const retry = () => {
+            detachRecorder(take);
+            recording = null;
+            attempt();
+          };
+          recorder.onerror = () => {
+            if (recording !== take) return;
+            if (recState === 'starting' && !take.started && recorder.state === 'inactive') {
+              retry();
+              return;
+            }
+            stopRecording('录像意外中断，正在尝试保留已录片段');
+          };
+          recorder.onstop = () => {
+            if (recording !== take) return;
+            if (recState === 'starting' && !take.started && !take.bytes) {
+              retry();
+              return;
+            }
+            finalizeRecording(take);
+          };
+          try {
+            recorder.start(1000);
+            take.timeout = setTimeout(() => {
+              if (recording !== take || recState !== 'starting') return;
+              if (take.bytes) {
+                stopRecording('录像编码器启动超时');
+                return;
+              }
+              try { if (recorder.state !== 'inactive') recorder.stop(); } catch (_) {}
+              retry();
+            }, 5000);
+            return;
+          } catch (_) {
+            detachRecorder(take);
+            recording = null;
+          }
+        }
+        cancelCountdown('无法启动录像编码器，请重试');
+      };
+      attempt();
+    }
+
+    function detachRecorder(take) {
+      clearTimeout(take.timeout);
+      const { recorder } = take;
+      recorder.onstart = recorder.ondataavailable = recorder.onerror = recorder.onstop = null;
+    }
+
+    function pauseRecording() {
+      if (recording?.recorder.state !== 'recording') return;
+      try {
+        recording.recorder.pause();
+      } catch (_) {
+        showToast('当前录像无法暂停');
+        return;
+      }
+      activeRecordedMs += performance.now() - activeSegmentStart;
+      recState = 'paused';
+      stopRecTimer();
+      recTimerText.textContent = '已暂停 ' + formatTime(activeRecordedMs);
+      stopScrollLoop();
+      updateDockForState();
+    }
+
+    function resumeRecording() {
+      if (recording?.recorder.state !== 'paused') return;
+      try {
+        recording.recorder.resume();
+      } catch (_) {
+        showToast('当前录像无法继续，请停止并保存');
+        return;
+      }
+      activeSegmentStart = performance.now();
+      recState = 'recording';
+      updateDockForState();
+      timerRafId = requestAnimationFrame(updateRecTimerLoop);
+      if (leadRemaining > 0) {
+        tpLeadTrack.classList.add('active');
+        tpLeadHint.classList.add('visible');
+      }
+      startScrollLoop();
+    }
+
+    function enterFinalizing() {
+      if (recState === 'recording') activeRecordedMs += performance.now() - activeSegmentStart;
+      recState = 'finalizing';
+      stopRecTimer();
+      stopScrollLoop();
+      stopVoiceRecognition();
+      closeSheets();
+      releaseWakeLock();
+      updateDockForState();
+    }
+
+    function stopRecording(notice = '') {
+      const take = recording;
+      if (!take || recState === 'finalizing') return;
+      take.notice ||= notice;
+      enterFinalizing();
+      if (notice) showToast(notice, 4200);
+      clearTimeout(take.timeout);
+      take.timeout = setTimeout(() => {
+        if (recording === take) {
+          take.notice ||= '浏览器停止回调超时，请检查保留下来的片段';
+          finalizeRecording(take);
+        }
+      }, 5000);
+      try {
+        if (take.recorder.state !== 'inactive') take.recorder.stop();
+      } catch (_) {
+        // A failing recorder may still dispatch its final data before the watchdog.
+      }
+    }
+
+    async function finalizeRecording(take) {
+      if (recording !== take) return;
+      const generation = takeGeneration;
+      const stillCurrent = () => recState === 'finalizing' && generation === takeGeneration;
+      if (recState !== 'finalizing') {
+        take.notice ||= '录像意外结束，请检查保留下来的片段';
+        enterFinalizing();
+      }
+      detachRecorder(take);
+      if (take.recorder.state !== 'inactive') {
+        try { take.recorder.stop(); } catch (_) {}
+      }
+      recording = null;
+      releaseCamera();
+      try {
+        if (!take.bytes) throw new Error('浏览器没有生成录像数据');
+        const raw = new Blob(take.chunks);
+        take.chunks.length = 0;
+        const ext = await identifyVideo(raw);
+        if (!stillCurrent()) return;
+        let blob = new Blob([raw], { type: 'video/' + ext });
+        let durationMs;
+        if (ext === 'webm') {
+          try {
+            const result = await fixWebmDuration(blob, activeRecordedMs);
+            blob = result.blob;
+            durationMs = result.durationMs;
+            if (!result.hasAudio) take.notice = '此片段没有检测到编码后的音轨';
+          } catch (error) {
+            console.warn('WebM duration:', error);
+            take.notice = 'WebM 时长校验失败，可尝试下载原始录像';
+          }
+        } else {
+          try {
+            const result = await inspectMp4(blob);
+            if (!result.hasAudio) take.notice = '此片段没有检测到编码后的音轨';
+          } catch (error) {
+            console.warn('MP4 validation:', error);
+            take.notice = 'MP4 文件完整性校验失败，请先回看并检查画面和声音';
+          }
+        }
+        if (stillCurrent()) openReviewScreen(blob, ext, durationMs, take.notice);
+      } catch (error) {
+        if (!stillCurrent()) return;
+        console.warn('Recording export:', error);
+        recState = 'idle';
+        updateDockForState();
+        startPreview();
+        showToast(take.notice || '录像文件无法读取，请重试', 4200);
+      }
+    }
+
+    function releaseReviewMedia() {
+      reviewFile = null;
+      reviewInfo = null;
+      reviewVideo.pause();
+      reviewVideo.removeAttribute('src');
+      reviewVideo.load();
+      btnDownload.removeAttribute('href');
+      btnDownload.removeAttribute('download');
+      if (currentVideoUrl) URL.revokeObjectURL(currentVideoUrl);
+      currentVideoUrl = '';
+      sharePending = false;
+      btnSaveAlbum.disabled = false;
+      btnRetake.disabled = false;
+      reviewOverlay.classList.remove('visible');
+    }
+
+    function openReviewScreen(blob, ext, durationMs, notice) {
+      releaseReviewMedia();
+      const filename = makeTimestampFilename(ext);
+      reviewFile = new File([blob], filename, { type: blob.type });
+      currentVideoUrl = URL.createObjectURL(reviewFile);
+      reviewInfo = { ext, durationMs, sizeMb: (blob.size / (1024 * 1024)).toFixed(1) };
+      reviewVideo.src = currentVideoUrl;
+      reviewNotice.textContent = notice || '';
+      btnSaveAlbum.querySelector('span').textContent = ext === 'webm' ? '分享 WebM' : '保存到手机相册';
+      btnDownload.href = currentVideoUrl;
+      btnDownload.download = filename;
+      reviewOverlay.classList.add('visible');
+      recState = 'review';
+      updateDockForState();
+      renderReviewMeta();
+      btnSaveAlbum.focus();
+    }
+
+    function renderReviewMeta() {
+      if (!reviewInfo) return;
+      const { ext, durationMs, sizeMb } = reviewInfo;
+      const metadataMs = reviewVideo.duration * 1000;
+      const knownMs = durationMs ?? (Number.isFinite(metadataMs) && metadataMs > 0 ? metadataMs : null);
+      const roundedMs = knownMs === null ? null : Math.round(knownMs / 100) * 100;
+      const time = roundedMs === null ? '时长待确认' : formatTime(roundedMs) + '.' + (roundedMs % 1000) / 100;
+      reviewMeta.textContent = [time, ext.toUpperCase(), sizeMb + ' MB'].join(' · ');
+    }
+
+    reviewVideo.addEventListener('loadedmetadata', renderReviewMeta);
+    reviewVideo.addEventListener('durationchange', renderReviewMeta);
+    reviewVideo.addEventListener('error', () => {
+      if (reviewFile) reviewNotice.textContent ||= '当前浏览器无法回看，可下载文件后尝试播放';
+    });
+
+    function makeTimestampFilename(ext) {
+      const d = new Date();
+      const pad = (n) => String(n).padStart(2, '0');
+      const date = [d.getFullYear(), pad(d.getMonth() + 1), pad(d.getDate())].join('');
+      const time = [pad(d.getHours()), pad(d.getMinutes()), pad(d.getSeconds())].join('');
+      return '口播_' + date + '_' + time + '.' + ext;
+    }
+
+    btnDownload.addEventListener('click', () => {
+      showToast('已请求下载，请在浏览器下载列表或文件应用查看', 4200);
+    });
+
+    btnSaveAlbum.addEventListener('click', () => {
+      const file = reviewFile;
+      if (!file || sharePending) return;
+      const data = { files: [file] };
+      let canShare = false;
+      try { canShare = typeof navigator.share === 'function' && navigator.canShare?.(data); } catch (_) {}
+      if (!canShare) {
+        btnDownload.click();
+        return;
+      }
+      try {
+        // Start sharing in this click, before any await, timer, or media processing.
+        const pending = navigator.share(data);
+        sharePending = true;
+        btnSaveAlbum.disabled = true;
+        btnRetake.disabled = true;
+        Promise.resolve(pending).catch(error => {
+          if (reviewFile === file && error?.name !== 'AbortError') {
+            showToast('系统分享未完成，可点「下载文件」保存', 4200);
+          }
+        }).finally(() => {
+          if (reviewFile === file) {
+            sharePending = false;
+            btnSaveAlbum.disabled = false;
+            btnRetake.disabled = false;
+          }
+        });
+      } catch (_) {
+        showToast('无法打开系统分享，可点「下载文件」保存', 4200);
+      }
+    });
+
+    btnRetake.addEventListener('click', () => {
+      if (sharePending) return;
+      releaseReviewMedia();
+      recState = 'idle';
+      resetScrollToTop();
+      updateDockForState();
+      btnShutter.focus();
+      startPreview();
+    });
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        stopRehearsal();
+        releaseWakeLock();
+        if (recState === 'preparing' || recState === 'countdown') cancelCountdown(null, false);
+        else if (['starting', 'recording', 'paused'].includes(recState)) stopRecording('页面转入后台，已结束本段录像');
+        else if (recState === 'idle') releaseCamera();
+      } else {
+        startPreview();
+      }
+    });
+
+    window.addEventListener('pagehide', () => {
+      takeGeneration++;
+      clearInterval(countdownTimer);
+      countdownTimer = null;
+      countdownOverlay.classList.remove('visible');
+      closeSheets();
+      stopRehearsal();
+      stopRecTimer();
+      stopScrollLoop();
+      stopVoiceRecognition();
+      releaseWakeLock();
+      if (recording) {
+        detachRecorder(recording);
+        try { if (recording.recorder.state !== 'inactive') recording.recorder.stop(); } catch (_) {}
+        recording.chunks.length = 0;
+        recording = null;
+      }
+      releaseCamera();
+      releaseReviewMedia();
+      recState = 'idle';
+      updateDockForState();
+    });
+
+    window.addEventListener('pageshow', startPreview);
+
+    // ---------- Boot ----------
+    applySpeed(settings.speed, false);
+    applyAppearance();
+    renderActiveScript();
+    initWindowRect();
+    updateDockForState();
+    startPreview();
+
+  })();
+  </script>
+</body>
+</html>
