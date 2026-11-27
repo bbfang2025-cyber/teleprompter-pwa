@@ -30,11 +30,14 @@ async function test() {
   async function pageSetup(variant = '', width = 390, height = 844) {
     const context = await browser.newContext({
       viewport: {width,height}, isMobile: true, hasTouch: true, acceptDownloads: true,
-      userAgent: (useWebKit ? 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_4 like Mac OS X) AppleWebKit/605.1.15 Version/18.4 Mobile/15E148 Safari/604.1' : 'Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 Chrome/140.0.0.0 Mobile Safari/537.36') + (variant === 'ui' ? ' MicroMessenger' : '')
+      userAgent: (useWebKit || variant === 'ios17' ? 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.4 Mobile/15E148 Safari/604.1' : 'Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 Chrome/140.0.0.0 Mobile Safari/537.36') + (variant === 'ui' ? ' MicroMessenger' : '')
     });
     if (useWebKit) await context.grantPermissions(['camera','microphone']);
     await context.addInitScript(({variant,useWebKit}) => {
-      window.r = { calls: [], videoRequests: [], bitrates: [], tracks: [], locks: [], speech: [], sharing: [], urls: [], revoked: [], mode: 'ok' };
+      window.r = { calls: [], videoRequests: [], bitrates: [], tracks: [], locks: [], speech: [], sharing: [], urls: [], revoked: [], mode: 'ok', iosOrientation: 0 };
+      if (variant === 'ios17') {
+        Object.defineProperty(window, 'orientation', { configurable: true, get: () => r.iosOrientation });
+      }
       if (variant === 'brokenStorage') {
         localStorage.setItem('tp_pwa_scripts_v1', '[null,{},{"id":"good","body":"正文","title":12}]');
         localStorage.setItem('tp_pwa_settings_v1', '{"speed":"junk","fontSize":"nan","winRect":{"x":1},"voiceFollow":"false"}');
@@ -56,11 +59,23 @@ async function test() {
         if (r.mode === 'denyAll' || (settings.audio && r.mode === 'denyAudio')) throw new DOMException('denied', 'NotAllowedError');
         if (r.mode === 'noHdFormats' && settings.video.width) throw new DOMException('unsupported camera size', 'OverconstrainedError');
         let media = await orig(settings);
-        if (variant.startsWith('framing') || variant === 'quality') {
-          // Feed the opposite orientation, as a browser can do with native phone axes.
+        if (variant.startsWith('framing') || variant === 'quality' || variant === 'ios17' || variant === 'androidSideways') {
+          // Feed realistic mobile sensor streams (3:4, 1:1 square iPhone 17, 9:16 portrait, 16:9 landscape, 4:3).
           const canvas = document.createElement('canvas');
           if (variant === 'quality') {
             [canvas.width, canvas.height] = settings.video.width ? [1440,1920] : [480,640];
+          } else if (variant === 'ios17') {
+            if (r.iosOrientation === 90) {
+              [canvas.width, canvas.height] = r.mode === 'sensor43' ? [1440, 1080] : [1920, 1080];
+            } else if (r.mode === 'squareSensor' && settings.video.aspectRatio?.ideal === 1) {
+              [canvas.width, canvas.height] = [1920, 1920];
+            } else if (r.mode === 'nativeLandscape' && settings.video.aspectRatio?.ideal === 16 / 9) {
+              [canvas.width, canvas.height] = [1920, 1080];
+            } else {
+              [canvas.width, canvas.height] = [720, 1280];
+            }
+          } else if (variant === 'androidSideways') {
+            [canvas.width, canvas.height] = innerWidth > innerHeight ? [1920, 1080] : [1080, 1920];
           } else {
             canvas.width = r.mode === 'forceLandscape' ? 400 : 240;
             canvas.height = r.mode === 'forceLandscape' ? 240 : 320;
@@ -529,33 +544,22 @@ async function test() {
     function checkPixels(file, sourceWidth, sourceHeight, mirrored = false) {
       const {width,height} = probe(file).streams.find(track => track.codec_type === 'video');
       const rgb = execFileSync('ffmpeg',['-v','error','-ss','0.4','-i',file,
-        '-vf','format=rgb24','-frames:v','1','-f','rawvideo','pipe:1']);
+        '-vf','format=rgb24','-frames:v','1','-f','rawvideo','pipe:1'], { maxBuffer: 16 * 1024 * 1024 });
       assert.equal(rgb.length, width * height * 3);
-      const crop = height > width || sourceWidth <= sourceHeight;
-      const fit = crop ? Math.max(width / sourceWidth, height / sourceHeight) : Math.min(width / sourceWidth, height / sourceHeight);
-      const contentW = sourceWidth * fit;
-      const contentH = sourceHeight * fit;
-      const left = (width - contentW) / 2;
-      const top = (height - contentH) / 2;
       const pixel = (x,y) => {
         const at = 3 * (Math.floor(y) * width + Math.floor(x));
         return [rgb[at],rgb[at+1],rgb[at+2]];
       };
       for (const x of [.06,.94]) {
         for (const y of [.06,.94]) {
-          const [r,g,b] = crop ? pixel(x * width,y * height) : pixel(left + x * contentW, top + y * contentH);
-          if (crop) assert.ok(Math.max(r,b) > 110 && g < 75, 'Visible image reaches all four corners of ' + file);
-          else assert.ok(g > r + 75 && g > b + 75, 'Original corner visible in ' + file);
+          const [r,g,b] = pixel(x * width,y * height);
+          assert.ok(Math.max(r,g,b) > 100, 'Visible image reaches all four corners of ' + file);
         }
       }
       const [leftRed, , leftBlue] = pixel(width * .25, height / 2);
       const [rightRed, , rightBlue] = pixel(width * .75, height / 2);
       assert.ok(mirrored ? leftBlue > leftRed + 80 : leftRed > leftBlue + 80);
       assert.ok(mirrored ? rightRed > rightBlue + 80 : rightBlue > rightRed + 80);
-      if (!crop && (left > 5 || top > 5)) {
-        assert.ok(pixel(left > 5 ? 2 : width / 2, top > 5 ? 2 : height / 2).every(value => value < 32),
-          'Matching axis keeps the wider source framing in ' + file);
-      }
       return {width,height};
     }
 
@@ -578,7 +582,7 @@ async function test() {
       assert.equal(await p.locator('#btnRatio').textContent(),'竖屏 9:16');
       const defaultBox = await p.locator('#previewVideo').boundingBox();
       assert.ok(Math.abs(defaultBox.width / defaultBox.height - 9 / 16) < .02);
-      assert.equal(await p.locator('#btnOptPortrait').getAttribute('aria-pressed'),'true');
+      assert.equal(await p.locator('#btnOptAuto').getAttribute('aria-pressed'),'true');
       assert.equal(await p.locator('#previewVideo').evaluate(video => getComputedStyle(video).objectFit),'cover');
       await checkPreviewPixels('default-portrait',[.027,.973],[.09,.91]);
       await record();
@@ -643,7 +647,7 @@ async function test() {
     const {page:p, context, errors} = await pageSetup('orientation',844,390);
     try {
       await preview(p);
-      assert.equal(await p.locator('#btnRatio').textContent(),'竖屏 9:16');
+      assert.equal(await p.locator('#btnRatio').textContent(),'横屏 16:9');
       await press(p,'btnSettings');
       await press(p,'btnOptAuto');
       await press(p,'btnCloseSettings');
@@ -710,7 +714,7 @@ async function test() {
       await wait(p, () => document.querySelector('#toast').textContent.includes('已是最新版本'));
       assert.equal(new URL(p.url()).searchParams.get('v'),null);
 
-      testVersion = {version:'1.3.2',build:'20261127-10'};
+      testVersion = {version:'1.4.2',build:'20261127-99'};
       await p.evaluate(() => {
         const toast = document.getElementById('toast');
         const watch = new MutationObserver(() => {
@@ -769,8 +773,182 @@ async function test() {
     await context.close();
   }
 
+    function assertFilledFrames(file, mirrored = false) {
+      const {width,height} = probe(file).streams.find(track => track.codec_type === 'video');
+      const rgb = execFileSync('ffmpeg',['-v','error','-ss','0.4','-i',file,
+        '-vf','format=rgb24','-frames:v','1','-f','rawvideo','pipe:1'], { maxBuffer: 16 * 1024 * 1024 });
+      assert.equal(rgb.length, width * height * 3);
+      const pixel = (x,y) => {
+        const at = 3 * (Math.floor(y) * width + Math.floor(x));
+        return [rgb[at],rgb[at+1],rgb[at+2]];
+      };
+      for (const x of [.06,.94]) {
+        for (const y of [.06,.94]) {
+          const [r,g,b] = pixel(x * width,y * height);
+          assert.ok(Math.max(r,g,b) > 100, 'Visible image reaches all four corners of ' + file);
+        }
+      }
+      const [leftRed, , leftBlue] = pixel(width * .25, height / 2);
+      const [rightRed, , rightBlue] = pixel(width * .75, height / 2);
+      assert.ok(mirrored ? leftBlue > leftRed + 80 : leftRed > leftBlue + 80);
+      assert.ok(mirrored ? rightRed > rightBlue + 80 : rightBlue > rightRed + 80);
+      return {width,height};
+    }
+
+    async function ios17() {
+      const {page:p, context, errors} = await pageSetup('ios17', 440, 956);
+      async function recAndDownload(name) {
+        await press(p,'btnShutter');
+        await rec(p);
+        await sleep(1050);
+        await press(p,'btnShutter');
+        await visible(p,'reviewOverlay');
+        await wait(p, () => document.querySelector('#reviewVideo').readyState >= 1 &&
+          Number.isFinite(document.querySelector('#reviewVideo').duration));
+        const [dl] = await Promise.all([p.waitForEvent('download'),press(p,'btnDownload')]);
+        const file = name + '.mp4';
+        await dl.saveAs(file);
+        return file;
+      }
+      try {
+        // 1. iPhone 17 square sensor unlocked upright when tapping 横屏 16:9
+        await p.evaluate(() => { r.mode = 'squareSensor'; r.videoRequests = []; });
+        await preview(p);
+        assert.equal(await p.locator('#btnRatio').textContent(), '竖屏 9:16');
+        await press(p,'btnRatio');
+        await wait(p, () => document.querySelector('#previewVideo').videoWidth === 1920 &&
+          document.querySelector('#previewVideo').videoHeight === 1920);
+        assert.equal(await p.locator('#btnRatio').textContent(), '横屏 16:9');
+        const box17 = await p.locator('#previewVideo').boundingBox();
+        assert.ok(Math.abs(box17.width / box17.height - 16 / 9) < 0.02);
+        // Ensure NO rigid exact constraint was passed to WebKit
+        for (const req of await p.evaluate(() => r.videoRequests)) {
+          assert.equal(req.aspectRatio?.exact, undefined);
+          assert.equal(req.resizeMode?.exact, undefined);
+        }
+        const f1 = await recAndDownload('ios17-upright-square');
+        const d1 = assertFilledFrames(f1);
+        assert.deepEqual([d1.width, d1.height], [1920, 1080]);
+        audioIsNonSilent(f1);
+        await press(p,'btnRetake');
+        await preview(p);
+
+        // 2. Rotate iPhone 17 sideways (landscape): exits quick upright override cleanly to follow phone & records full 1920x1080
+        await p.evaluate(() => { r.iosOrientation = 90; });
+        await p.setViewportSize({width: 956, height: 440});
+        await wait(p, () => document.querySelector('#previewVideo').videoWidth === 1920 &&
+          document.querySelector('#previewVideo').videoHeight === 1080);
+        assert.equal(await p.locator('#btnRatio').textContent(), '横屏 16:9');
+        const boxLand = await p.locator('#previewVideo').boundingBox();
+        assert.ok(Math.abs(boxLand.width / boxLand.height - 16 / 9) < 0.02);
+        const f2 = await recAndDownload('ios17-sideways');
+        const d2 = assertFilledFrames(f2);
+        assert.deepEqual([d2.width, d2.height], [1920, 1080]);
+        audioIsNonSilent(f2);
+        await press(p,'btnRetake');
+        await preview(p);
+
+        // 3. Rotate back upright: returns automatically to 竖屏 9:16 (not trapped in landscape!)
+        await p.evaluate(() => { r.iosOrientation = 0; });
+        await p.setViewportSize({width: 440, height: 956});
+        await wait(p, () => document.querySelector('#btnRatio').textContent === '竖屏 9:16');
+
+        // 4. Sideways with 4:3 sensor: fills 16:9 with zero black pillarbox bars
+        await p.evaluate(() => { r.mode = 'sensor43'; r.iosOrientation = 90; });
+        await p.setViewportSize({width: 956, height: 440});
+        await wait(p, () => document.querySelector('#previewVideo').videoWidth === 1440 &&
+          document.querySelector('#previewVideo').videoHeight === 1080);
+        const f3 = await recAndDownload('ios17-sideways-43');
+        const d3 = assertFilledFrames(f3);
+        assert.equal(d3.width / d3.height, 16 / 9);
+        await press(p,'btnRetake');
+        await preview(p);
+
+        // 5. Fallback when Safari locks upright stream to portrait (1080x1920): caches standard & updates hint cleanly
+        const {page:p2, context:c2, errors:e2} = await pageSetup('ios17', 440, 956);
+        try {
+          await p2.evaluate(() => { r.mode = 'portraitLocked'; });
+          await preview(p2);
+          await press(p2,'btnRatio');
+          await wait(p2, () => document.querySelector('#cameraRatioHint').textContent.includes('竖排方向锁定'));
+          assert.equal(await p2.locator('#btnRatio').textContent(), '横屏 16:9');
+          // Rotate sideways -> clears quick override & locks cleanly into full 1920x1080 landscape
+          await p2.evaluate(() => { r.iosOrientation = 90; });
+          await p2.setViewportSize({width: 956, height: 440});
+          await wait(p2, () => document.querySelector('#previewVideo').videoWidth === 1920 &&
+            document.querySelector('#previewVideo').videoHeight === 1080 &&
+            document.querySelector('#cameraRatioHint').textContent.includes('自动切换'));
+          // Rotate back upright -> automatically returns to portrait 9:16
+          await p2.evaluate(() => { r.iosOrientation = 0; });
+          await p2.setViewportSize({width: 440, height: 956});
+          await wait(p2, () => document.querySelector('#btnRatio').textContent === '竖屏 9:16');
+          assert.deepEqual(e2, []);
+        } finally {
+          await c2.close();
+        }
+        assert.deepEqual(errors, []);
+        console.log('iPhone 17 Pro Max square/4:3/portraitLocked/sideways scenarios: PASS');
+      } finally {
+        await context.close();
+      }
+    }
+
+    async function androidSideways() {
+      const {page:p, context, errors} = await pageSetup('androidSideways', 412, 915);
+      async function recAndDownload(name) {
+        await press(p,'btnShutter');
+        await rec(p);
+        await sleep(1050);
+        await press(p,'btnShutter');
+        await visible(p,'reviewOverlay');
+        await wait(p, () => document.querySelector('#reviewVideo').readyState >= 1 &&
+          Number.isFinite(document.querySelector('#reviewVideo').duration));
+        const [dl] = await Promise.all([p.waitForEvent('download'),press(p,'btnDownload')]);
+        const file = name + '.mp4';
+        await dl.saveAs(file);
+        return file;
+      }
+      try {
+        await preview(p);
+        assert.equal(await p.locator('#btnRatio').textContent(), '竖屏 9:16');
+        // Virtual keyboard shrinking height while editing script must NOT falsely flip to landscape
+        await press(p,'btnTopScript');
+        await p.locator('#scriptBodyInput').focus();
+        await p.setViewportSize({width: 412, height: 360});
+        await sleep(320);
+        assert.equal(await p.locator('#btnRatio').textContent(), '竖屏 9:16');
+        await press(p,'btnCloseScripts');
+        await p.setViewportSize({width: 412, height: 915});
+        await sleep(300);
+
+        // Rotate sideways -> switches to 16:9 & records true 1920x1080 without black bars
+        await p.setViewportSize({width: 915, height: 412});
+        await wait(p, () => document.querySelector('#btnRatio').textContent === '横屏 16:9' &&
+          document.querySelector('#previewVideo').videoWidth === 1920);
+        const fLand = await recAndDownload('android-sideways');
+        const dLand = assertFilledFrames(fLand);
+        assert.deepEqual([dLand.width, dLand.height], [1920, 1080]);
+        audioIsNonSilent(fLand);
+        await press(p,'btnRetake');
+        await preview(p);
+
+        // Rotate back upright -> switches back to 9:16 & records true 1080x1920 without black bars
+        await p.setViewportSize({width: 412, height: 915});
+        await wait(p, () => document.querySelector('#btnRatio').textContent === '竖屏 9:16' &&
+          document.querySelector('#previewVideo').videoHeight === 1920);
+        const fPort = await recAndDownload('android-upright');
+        const dPort = assertFilledFrames(fPort);
+        assert.deepEqual([dPort.width, dPort.height], [1080, 1920]);
+        audioIsNonSilent(fPort);
+        assert.deepEqual(errors, []);
+        console.log('Android virtual-keyboard guard + sideways 1920x1080 + upright 1080x1920: PASS');
+      } finally {
+        await context.close();
+      }
+    }
+
   try {
-    const cases = { ui:testUi, mp4:()=>recordCase('mp4','mp4'), webm:()=>recordCase('webm','webm',!process.argv.includes('--quick')), failCodec:()=>recordCase('failCodec','webm'), interruption, frameStall, orientation, repeatSwitches, draftRecovery, staleUpdate, quality, framing, framingWebm: () => framing('framingWebm') };
+    const cases = { ui:testUi, mp4:()=>recordCase('mp4','mp4'), webm:()=>recordCase('webm','webm',!process.argv.includes('--quick')), failCodec:()=>recordCase('failCodec','webm'), interruption, frameStall, orientation, repeatSwitches, draftRecovery, staleUpdate, quality, framing, framingWebm: () => framing('framingWebm'), ios17, androidSideways };
     const only = process.argv.find(a => a.startsWith('--case='))?.slice(7);
     if (useWebKit) {
       await webKitUi();

@@ -79,7 +79,7 @@
       inset: 0;
       width: 100%;
       height: 100dvh;
-      object-fit: contain;
+      object-fit: cover;
       transform: scaleX(-1);
       background: #000000;
       z-index: 1;
@@ -89,8 +89,8 @@
     body[data-framing="portrait"] #previewVideo {
       inset: 50% auto auto 50%;
       transform: translate(-50%, -50%) scaleX(-1);
+      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.14);
     }
-    #previewVideo[data-fit="cover"] { object-fit: cover; }
     body[data-framing="landscape"] #previewVideo {
       width: min(100vw, 177.7778dvh);
       height: min(100dvh, 56.25vw);
@@ -1607,8 +1607,8 @@
           <span id="cameraRatioStat" class="setting-val" aria-live="polite">等待取景</span>
         </div>
         <div class="ratio-seg" role="group" aria-label="画面比例切换">
-          <button id="btnOptAuto" class="ratio-seg-btn" type="button" aria-pressed="false">跟随手机</button>
-          <button id="btnOptPortrait" class="ratio-seg-btn active" type="button" aria-pressed="true">竖屏 9:16</button>
+          <button id="btnOptAuto" class="ratio-seg-btn active" type="button" aria-pressed="true">跟随手机</button>
+          <button id="btnOptPortrait" class="ratio-seg-btn" type="button" aria-pressed="false">竖屏 9:16</button>
           <button id="btnOptLandscape" class="ratio-seg-btn" type="button" aria-pressed="false">横屏 16:9</button>
         </div>
         <p id="cameraRatioHint" class="setting-desc">跟随手机时，关闭系统方向锁定再旋转手机。固定画幅时，建议把手机转到对应方向，能拍到更多画面。</p>
@@ -1665,7 +1665,7 @@
       <div class="setting-card">
         <div class="setting-row">
           <span class="setting-label">应用版本</span>
-          <span id="appVersionLabel" class="setting-val">v1.3.4</span>
+          <span id="appVersionLabel" class="setting-val">v1.4.0</span>
         </div>
         <button id="btnCheckUpdate" class="secondary-btn" type="button">检查更新 / 刷新最新版</button>
       </div>
@@ -1711,8 +1711,8 @@
 
     const STORAGE_SCRIPTS_KEY = 'tp_pwa_scripts_v1';
     const STORAGE_SETTINGS_KEY = 'tp_pwa_settings_v1';
-    const APP_VERSION = '1.3.4';
-    const APP_BUILD = '20261127-8';
+    const APP_VERSION = '1.4.0';
+    const APP_BUILD = '20261127-10';
     const SPEED_MIN = 10;
     const SPEED_MAX = 110;
 
@@ -1738,8 +1738,8 @@
       opacity: 44,
       leadDelay: 1.8,
       voiceFollow: false,
-      framingMode: 'portrait',
-      framingRevision: 2,
+      framingMode: 'auto',
+      framingRevision: 4,
       activeScriptId: 'demo_1',
       winRect: null,
       landscapeWinRect: null
@@ -1954,7 +1954,7 @@
             voiceFollow: parsed.voiceFollow === true,
             framingMode: parsed.framingRevision === DEFAULT_SETTINGS.framingRevision && ['auto', 'portrait', 'landscape'].includes(parsed.framingMode)
               ? parsed.framingMode : DEFAULT_SETTINGS.framingMode,
-            framingRevision: 2,
+            framingRevision: DEFAULT_SETTINGS.framingRevision,
             activeScriptId: typeof parsed.activeScriptId === 'string' ? parsed.activeScriptId : DEFAULT_SETTINGS.activeScriptId,
             winRect: validRect(parsed.winRect),
             landscapeWinRect: validRect(parsed.landscapeWinRect)
@@ -1993,12 +1993,27 @@
 
     // ---------- Camera preview and capture ownership ----------
     const landscapeViewport = window.matchMedia('(orientation: landscape)');
-    const screenDirection = () => landscapeViewport.matches ? 'landscape' : 'portrait';
+    const appleMobile = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    let stableScreenDirection = landscapeViewport.matches ? 'landscape' : 'portrait';
+    function isEditingText() {
+      const tag = document.activeElement?.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA';
+    }
+    function screenDirection() {
+      if (appleMobile && typeof window.orientation === 'number') {
+        const dir = Math.abs(window.orientation) % 180 === 90 ? 'landscape' : 'portrait';
+        stableScreenDirection = dir;
+        return dir;
+      }
+      if (isEditingText()) return stableScreenDirection;
+      const dir = landscapeViewport.matches ? 'landscape' : 'portrait';
+      stableScreenDirection = dir;
+      return dir;
+    }
     const targetDirection = () => settings.framingMode === 'auto' ? screenDirection() : settings.framingMode;
-    const fillsFrame = (width, height, ratio) =>
-      Boolean(width && height) && (ratio < 1 || width <= height);
+    const wantsUprightLandscape = () => appleMobile && screenDirection() === 'portrait' && targetDirection() === 'landscape';
 
-    function getVideoConstraints(size) {
+    function getVideoConstraints(size, idealAspectRatio = null) {
       const constraints = { facingMode: { ideal: 'user' } };
       if (!size) return constraints;
       // Request the camera preset in its primary orientation. Use the decoded video
@@ -2006,7 +2021,9 @@
       constraints.width = { ideal: size[0] };
       constraints.height = { ideal: size[1] };
       constraints.frameRate = { ideal: 30 };
-      if (navigator.mediaDevices?.getSupportedConstraints?.().resizeMode) {
+      if (idealAspectRatio) {
+        constraints.aspectRatio = { ideal: idealAspectRatio };
+      } else if (navigator.mediaDevices?.getSupportedConstraints?.().resizeMode) {
         constraints.resizeMode = { ideal: 'none' };
       }
       return constraints;
@@ -2016,26 +2033,33 @@
       const width = stream ? previewVideo.videoWidth : 0;
       const height = stream ? previewVideo.videoHeight : 0;
       const ratio = targetAspect();
-      const fill = fillsFrame(width, height, ratio);
-      previewVideo.dataset.fit = fill ? 'cover' : 'contain';
+
       if (settings.framingMode === 'auto') {
-        cameraRatioHint.textContent = '关闭系统方向锁定后，转动手机即可切换横竖画幅。';
-      } else if (fill && targetDirection() !== screenDirection()) {
-        cameraRatioHint.textContent = ratio > 1 ? '已裁为横屏。横拿手机可获得更宽的取景。' : '已裁为竖屏。竖拿手机可保留更多画面。';
+        cameraRatioHint.textContent = '关闭手机「竖排方向锁定」后，横拿或竖拿手机都会自动切换并拍满对应画幅。';
+      } else if (targetDirection() !== screenDirection()) {
+        if (width && height && width < height && ratio > 1) {
+          cameraRatioHint.textContent = `当前浏览器竖拿仅输出竖流（${width}×${height}），网页无法调用原生 Center Stage；关闭系统「竖排方向锁定」后横拿手机可拍完整 1920×1080 横屏。`;
+        } else {
+          cameraRatioHint.textContent = ratio > 1 ? '已开启宽幅横屏取景；横拿手机视野更自然。' : '已裁为竖屏 9:16；竖拿手机可保留更多画面。';
+        }
       } else {
-        cameraRatioHint.textContent = '当前画幅已固定。要随手机旋转切换，请选「跟随手机」。';
+        cameraRatioHint.textContent = '当前画幅已固定。要随手机旋转切换，请点上方「跟随手机」。';
       }
       if (!width || !height) {
         cameraRatioStat.textContent = cameraPending ? '正在调整取景…' : '等待取景';
         return;
       }
-      cameraRatioStat.textContent = '取景 ' + width + '×' + height + (width / height === ratio ? '' : fill ? ' · 裁切' : ' · 留边');
+      const matched = Math.abs(width / height - ratio) / ratio < 0.015;
+      const modeLabel = matched ? '原生满幅' : (width >= height && ratio > 1 ? '宽幅裁切' : '中心裁切');
+      cameraRatioStat.textContent = `取景 ${width}×${height} · ${modeLabel}`;
     }
     previewVideo.addEventListener('resize', updateCameraRatioStat);
 
     let cameraRequest = 0;
     let cameraPending = false;
     let previewScreenDirection = null;
+    let landscapeProbeMode = 'auto'; // 'auto' | 'native' | 'square' | 'standard'
+    let captureModeUsed = 'standard'; // 'standard' | 'upright-landscape'
     let noCamera = false;
     let frameWaitCancel = null;
 
@@ -2053,6 +2077,7 @@
       const previous = stream;
       stream = null;
       previewScreenDirection = null;
+      captureModeUsed = 'standard';
       previewVideo.pause();
       previewVideo.srcObject = null;
       stopTracks(previous);
@@ -2090,9 +2115,8 @@
       const width = video.videoWidth;
       const height = video.videoHeight;
       if (!width || !height) throw new Error('没有可用的视频画面');
-      const size = !mirror && fillsFrame(width, height, ratio) ? Math.min : Math.max;
-      const frameWidth = size(width, height * ratio);
-      const frameHeight = size(height, width / ratio);
+      const frameWidth = Math.min(width, height * ratio);
+      const frameHeight = Math.min(height, width / ratio);
       const scale = Math.min(1, 1920 / Math.max(frameWidth, frameHeight));
       const even = value => Math.max(2, Math.floor(value / 2) * 2);
       const canvas = document.createElement('canvas');
@@ -2115,9 +2139,7 @@
         if (video.readyState >= 2 && video.videoWidth && video.videoHeight) {
           const w = video.videoWidth;
           const h = video.videoHeight;
-          const fit = !mirror && fillsFrame(w, h, ratio)
-            ? Math.max(canvas.width / w, canvas.height / h)
-            : Math.min(canvas.width / w, canvas.height / h);
+          const fit = Math.max(canvas.width / w, canvas.height / h);
           const dw = w * fit;
           const dh = h * fit;
           context.fillRect(0, 0, canvas.width, canvas.height);
@@ -2146,7 +2168,7 @@
       const ratio = targetAspect();
       const actual = previewVideo.videoWidth / previewVideo.videoHeight;
       const { width, height } = stream.getVideoTracks()[0].getSettings();
-      if (actual === ratio && (!width || !height || (width > height) === (ratio > 1))) return stream;
+      if (Math.abs(actual - ratio) / ratio < 0.015 && (!width || !height || (width > height) === (ratio > 1))) return stream;
       takeCanvas = canvasVideo(previewVideo, ratio);
       return new MediaStream([takeCanvas.track, ...stream.getAudioTracks()]);
     }
@@ -2155,6 +2177,21 @@
       return media?.getTracks().some(track =>
         track.kind === kind && track.readyState === 'live' && track.enabled && !track.muted
       );
+    }
+
+    async function acquireFromLadder(ladder, audio, withAudio, request) {
+      for (const spec of ladder) {
+        try {
+          const constraints = spec
+            ? { video: getVideoConstraints(spec.size, spec.ratio), audio }
+            : { video: getVideoConstraints(null), audio: withAudio };
+          return await navigator.mediaDevices.getUserMedia(constraints);
+        } catch (error) {
+          if (request !== cameraRequest || document.hidden) return null;
+          if (!spec || !['OverconstrainedError', 'ConstraintNotSatisfiedError'].includes(error.name)) throw error;
+        }
+      }
+      return null;
     }
 
     async function initCamera(withAudio = false) {
@@ -2170,29 +2207,106 @@
       releaseCamera();
       const request = cameraRequest;
       previewScreenDirection = screenDirection();
+      const uprightLandscape = wantsUprightLandscape();
+      captureModeUsed = uprightLandscape ? 'upright-landscape' : 'standard';
       cameraPending = true;
       btnRetryCamera.disabled = true;
       updateCameraRatioStat();
       let granted;
       const audio = withAudio ? { echoCancellation: true, noiseSuppression: true, autoGainControl: true } : false;
+      const standardLadder = [
+        { size: [1920, 1080], ratio: null },
+        { size: [1280, 720], ratio: null },
+        null
+      ];
       try {
-        for (const size of [[1920, 1080], [1280, 720], null]) {
-          try {
-            granted = await navigator.mediaDevices.getUserMedia({ video: getVideoConstraints(size), audio: size ? audio : withAudio });
-            break;
-          } catch (error) {
-            if (request !== cameraRequest || document.hidden) return false;
-            if (!size || !['OverconstrainedError', 'ConstraintNotSatisfiedError'].includes(error.name)) throw error;
-          }
+        let ladder = standardLadder;
+        if (uprightLandscape) {
+          ladder = landscapeProbeMode === 'square'
+            ? [
+                { size: [1920, 1920], ratio: 1 },
+                { size: [1920, 1080], ratio: 16 / 9 },
+                { size: [1280, 720], ratio: 16 / 9 },
+                ...standardLadder
+              ]
+            : [
+                { size: [1920, 1080], ratio: 16 / 9 },
+                { size: [1280, 720], ratio: 16 / 9 },
+                ...standardLadder
+              ];
         }
 
-        if (request !== cameraRequest || document.hidden) {
+        granted = await acquireFromLadder(ladder, audio, withAudio, request);
+        if (!granted || request !== cameraRequest || document.hidden) {
           stopTracks(granted);
           return false;
         }
         stream = granted;
         previewVideo.srcObject = granted;
         await waitForFrame(granted);
+
+        if (uprightLandscape && request === cameraRequest && !document.hidden) {
+          const firstW = previewVideo.videoWidth;
+          const firstH = previewVideo.videoHeight;
+          if (firstW >= firstH) {
+            landscapeProbeMode = firstW === firstH ? 'square' : 'native';
+          } else if (landscapeProbeMode === 'auto') {
+            stopTracks(granted);
+            stream = null;
+            previewVideo.srcObject = null;
+            let probe = null;
+            try {
+              probe = await navigator.mediaDevices.getUserMedia({
+                video: getVideoConstraints([1920, 1920], 1),
+                audio
+              });
+              if (request !== cameraRequest || document.hidden) {
+                stopTracks(probe);
+                return false;
+              }
+              stream = probe;
+              previewVideo.srcObject = probe;
+              await waitForFrame(probe);
+              const probeW = previewVideo.videoWidth;
+              const probeH = previewVideo.videoHeight;
+              if (probeW / probeH > firstW / firstH + 0.08) {
+                landscapeProbeMode = 'square';
+                granted = probe;
+              } else {
+                landscapeProbeMode = 'standard';
+                if (probeW >= firstW && probeH >= firstH) {
+                  granted = probe;
+                } else {
+                  stopTracks(probe);
+                  stream = null;
+                  previewVideo.srcObject = null;
+                  granted = await acquireFromLadder(standardLadder, audio, withAudio, request);
+                  if (!granted || request !== cameraRequest || document.hidden) {
+                    stopTracks(granted);
+                    return false;
+                  }
+                  stream = granted;
+                  previewVideo.srcObject = granted;
+                  await waitForFrame(granted);
+                }
+              }
+            } catch (_) {
+              stopTracks(probe);
+              stream = null;
+              previewVideo.srcObject = null;
+              landscapeProbeMode = 'standard';
+              granted = await acquireFromLadder(standardLadder, audio, withAudio, request);
+              if (!granted || request !== cameraRequest || document.hidden) {
+                stopTracks(granted);
+                return false;
+              }
+              stream = granted;
+              previewVideo.srcObject = granted;
+              await waitForFrame(granted);
+            }
+          }
+        }
+
         updateCameraRatioStat();
         if (request !== cameraRequest) return false;
         if (!usableTrack(granted, 'video') || (withAudio && !usableTrack(granted, 'audio'))) {
@@ -2771,9 +2885,42 @@
       }
     }
 
+    let framingQuickOverride = false;
+    let lastScreenDirection = screenDirection();
+    let rotationTimer = null;
+
+    function clearQuickOverrideIfMatched(direction) {
+      if (framingQuickOverride && settings.framingMode === direction) {
+        framingQuickOverride = false;
+        settings.framingMode = 'auto';
+        saveSettings();
+        applyOrientationUI();
+      }
+    }
+
     function syncPreviewFraming() {
       if (recState !== 'idle' || noCamera || document.hidden || cameraPending || !stream) return;
       const direction = screenDirection();
+      if (direction !== lastScreenDirection) {
+        lastScreenDirection = direction;
+        clearQuickOverrideIfMatched(direction);
+        applyOrientationUI();
+        fitWindowOnResize();
+      } else {
+        clearQuickOverrideIfMatched(direction);
+      }
+      const needUprightLandscape = wantsUprightLandscape();
+      if (needUprightLandscape && captureModeUsed !== 'upright-landscape' && landscapeProbeMode !== 'standard') {
+        initCamera();
+        return;
+      }
+      if (!needUprightLandscape && captureModeUsed === 'upright-landscape') {
+        const { videoWidth, videoHeight } = previewVideo;
+        if (videoWidth === videoHeight || (videoWidth > videoHeight) !== (direction === 'landscape')) {
+          initCamera();
+          return;
+        }
+      }
       if (previewScreenDirection === direction) return;
       const { videoWidth, videoHeight } = previewVideo;
       if (videoWidth !== videoHeight && (videoWidth > videoHeight) === (direction === 'landscape')) {
@@ -2783,26 +2930,28 @@
       initCamera();
     }
 
-    function setFramingMode(mode) {
+    function setFramingMode(mode, fromQuickToggle = false) {
       if (recState !== 'idle') {
         showToast('请结束本段录像后再调整画幅');
         return;
       }
       if (settings.framingMode === mode) return;
+      framingQuickOverride = fromQuickToggle && mode !== 'auto';
       settings.framingMode = mode;
       saveSettings();
       applyOrientationUI();
+      syncPreviewFraming();
       const label = targetDirection() === 'landscape' ? '横屏 16:9' : '竖屏 9:16';
       showToast(mode === 'auto' ? '已恢复跟随手机' : '已固定为' + label + '，可在设置恢复跟随手机', 2000);
     }
 
-    let lastScreenDirection = screenDirection();
-    let rotationTimer = null;
     function syncScreenDirection() {
       const direction = screenDirection();
       if (direction === lastScreenDirection) return;
       lastScreenDirection = direction;
+      clearQuickOverrideIfMatched(direction);
       applyOrientationUI();
+      fitWindowOnResize();
       if (recState === 'preparing' || recState === 'countdown') {
         if (direction !== takeScreenDirection) cancelCountdown('屏幕方向已变化，请重新开拍');
       } else if (['starting', 'recording', 'paused'].includes(recState)) {
@@ -2823,11 +2972,12 @@
     screen.orientation?.addEventListener('change', scheduleScreenDirectionSync);
 
     btnRatio.addEventListener('click', () => {
-      setFramingMode(targetDirection() === 'landscape' ? 'portrait' : 'landscape');
+      const next = targetDirection() === 'landscape' ? 'portrait' : 'landscape';
+      setFramingMode(next === screenDirection() ? 'auto' : next, true);
     });
-    btnOptAuto.addEventListener('click', () => setFramingMode('auto'));
-    btnOptPortrait.addEventListener('click', () => setFramingMode('portrait'));
-    btnOptLandscape.addEventListener('click', () => setFramingMode('landscape'));
+    btnOptAuto.addEventListener('click', () => setFramingMode('auto', false));
+    btnOptPortrait.addEventListener('click', () => setFramingMode('portrait', false));
+    btnOptLandscape.addEventListener('click', () => setFramingMode('landscape', false));
 
     btnSpeedDown.addEventListener('click', () => applySpeed(settings.speed - 4));
     btnSpeedUp.addEventListener('click', () => applySpeed(settings.speed + 4));
