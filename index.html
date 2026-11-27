@@ -73,9 +73,9 @@
       inset: 0;
       width: 100%;
       height: 100dvh;
-      object-fit: cover;
+      object-fit: contain;
       transform: scaleX(-1);
-      background: radial-gradient(circle at 50% 35%, #16181f 0%, #050507 100%);
+      background: #000000;
       z-index: 1;
     }
 
@@ -155,11 +155,10 @@
       align-items: center;
       gap: 8px;
       pointer-events: none;
-      transition: top 0.25s ease;
     }
 
     body.has-wechat-banner #topHud {
-      top: calc(max(12px, var(--safe-top)) + 64px);
+      top: calc(max(12px, var(--safe-top)) + 68px);
     }
 
     .top-bar-row {
@@ -168,13 +167,13 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 8px;
+      gap: 6px;
     }
 
     .hud-capsule {
       pointer-events: auto;
       min-height: 48px;
-      padding: 0 14px;
+      padding: 0 12px;
       border-radius: 999px;
       background: rgba(20, 21, 26, 0.56);
       backdrop-filter: blur(18px) saturate(145%);
@@ -183,14 +182,14 @@
       box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
       display: inline-flex;
       align-items: center;
-      gap: 8px;
-      font-size: 14px;
+      gap: 6px;
+      font-size: 13.5px;
       font-weight: 500;
       color: rgba(255, 255, 255, 0.94);
     }
 
     #btnTopScript {
-      max-width: min(62vw, 260px);
+      max-width: min(48vw, 220px);
       justify-content: flex-start;
     }
 
@@ -208,10 +207,18 @@
       font-variant-numeric: tabular-nums;
     }
 
-    #btnRehearse {
-      min-width: 78px;
+    #btnRatio {
+      min-width: 56px;
       justify-content: center;
       font-weight: 600;
+      flex-shrink: 0;
+    }
+
+    #btnRehearse {
+      min-width: 68px;
+      justify-content: center;
+      font-weight: 600;
+      flex-shrink: 0;
     }
 
     #btnRehearse.active {
@@ -1288,6 +1295,33 @@
     #countdownCancel { min-height: 44px; }
     #reviewNotice { margin: 0; font-size: 13px; }
     #reviewNotice:empty { display: none; }
+    .review-tip {
+      margin: 0;
+      font-size: 12px;
+      line-height: 1.45;
+      color: rgba(255, 255, 255, 0.6);
+      text-align: center;
+    }
+    .ratio-seg {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      padding: 4px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.08);
+    }
+    .ratio-seg-btn {
+      min-height: 44px;
+      border-radius: 9px;
+      font-size: 14px;
+      font-weight: 600;
+      color: rgba(255, 255, 255, 0.72);
+      transition: background 0.18s ease, color 0.18s ease;
+    }
+    .ratio-seg-btn.active {
+      background: rgba(255, 255, 255, 0.92);
+      color: #111216;
+    }
     #btnDownload {
       color: #fff;
       display: grid;
@@ -1345,6 +1379,7 @@
         <span id="hudScriptTitle" class="hud-script-title">载入中...</span>
         <span id="hudScriptMeta" class="hud-script-meta">0秒</span>
       </button>
+      <button id="btnRatio" class="hud-capsule" type="button" aria-label="切换横竖屏画面比例">竖屏</button>
       <button id="btnRehearse" class="hud-capsule" type="button" aria-pressed="false" aria-label="试滚排练">试滚</button>
     </div>
 
@@ -1496,6 +1531,18 @@
     <div class="sheet-body">
       <div class="setting-card">
         <div class="setting-row">
+          <span class="setting-label">画面比例</span>
+          <span id="cameraRatioStat" class="setting-val">竖屏 9:16</span>
+        </div>
+        <div class="ratio-seg" role="group" aria-label="画面比例切换">
+          <button id="btnOptPortrait" class="ratio-seg-btn active" type="button" data-orientation="portrait" aria-pressed="true">竖屏 9:16</button>
+          <button id="btnOptLandscape" class="ratio-seg-btn" type="button" data-orientation="landscape" aria-pressed="false">横屏 16:9</button>
+        </div>
+        <p id="cameraRatioHint" class="setting-desc">如实显示相机实际采集视野（所见即所得）；微信内置浏览器可能强制横屏，推荐用 Safari / 默认浏览器打开。</p>
+      </div>
+
+      <div class="setting-card">
+        <div class="setting-row">
           <div class="setting-label">
             <span>语音跟随滚动</span>
             <span class="beta-tag">Beta</span>
@@ -1555,9 +1602,10 @@
       <video id="reviewVideo" controls playsinline></video>
     </div>
     <p id="reviewNotice" role="status"></p>
+    <p class="review-tip">「保存到手机相册」调系统分享选“存储视频”直接进相册；若弹窗受限，点「存为文件」下载兜底</p>
     <div class="review-actions">
       <button id="btnRetake" type="button">重拍</button>
-      <a id="btnDownload">下载文件</a>
+      <a id="btnDownload">存为文件</a>
       <button id="btnSaveAlbum" type="button">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M12 3v12"/>
@@ -1602,6 +1650,7 @@
       opacity: 56,
       leadDelay: 1.8,
       voiceFollow: false,
+      orientation: 'portrait',
       activeScriptId: 'demo_1',
       winRect: null
     };
@@ -1615,6 +1664,7 @@
     const btnTopScript = $('btnTopScript');
     const hudScriptTitle = $('hudScriptTitle');
     const hudScriptMeta = $('hudScriptMeta');
+    const btnRatio = $('btnRatio');
     const btnRehearse = $('btnRehearse');
     const recTimerPill = $('recTimerPill');
     const recTimerText = $('recTimerText');
@@ -1666,6 +1716,9 @@
     const editorDurStat = $('editorDurStat');
 
     const switchVoice = $('switchVoice');
+    const cameraRatioStat = $('cameraRatioStat');
+    const btnOptPortrait = $('btnOptPortrait');
+    const btnOptLandscape = $('btnOptLandscape');
     const sliderFontSize = $('sliderFontSize');
     const fontSizeVal = $('fontSizeVal');
     const sliderOpacity = $('sliderOpacity');
@@ -1798,6 +1851,7 @@
             opacity: bounded('opacity', 0, 90),
             leadDelay: bounded('leadDelay', 0, 3),
             voiceFollow: parsed.voiceFollow === true,
+            orientation: parsed.orientation === 'landscape' ? 'landscape' : 'portrait',
             activeScriptId: typeof parsed.activeScriptId === 'string' ? parsed.activeScriptId : DEFAULT_SETTINGS.activeScriptId,
             winRect: rect && ['x', 'y', 'width', 'height'].every(key => Number.isFinite(rect[key])) ? rect : null
           };
@@ -1834,12 +1888,39 @@
     });
 
     // ---------- Camera preview and capture ownership ----------
-    const VIDEO_CONSTRAINTS = {
-      facingMode: { ideal: 'user' },
-      width: { ideal: 1080 },
-      height: { ideal: 1920 },
-      frameRate: { ideal: 30, max: 30 }
-    };
+    function getVideoConstraints(orientation, tier = 'hd') {
+      const isLand = orientation === 'landscape';
+      if (tier === 'sd') {
+        return {
+          facingMode: { ideal: 'user' },
+          aspectRatio: { ideal: isLand ? 16 / 9 : 9 / 16 },
+          width: { ideal: isLand ? 1280 : 720 },
+          height: { ideal: isLand ? 720 : 1280 }
+        };
+      }
+      return {
+        facingMode: { ideal: 'user' },
+        aspectRatio: { ideal: isLand ? 16 / 9 : 9 / 16 },
+        width: { ideal: isLand ? 1920 : 1080 },
+        height: { ideal: isLand ? 1080 : 1920 },
+        frameRate: { ideal: 30, max: 30 }
+      };
+    }
+
+    function updateCameraRatioStat() {
+      const vw = previewVideo.videoWidth;
+      const vh = previewVideo.videoHeight;
+      if (!vw || !vh) {
+        cameraRatioStat.textContent = settings.orientation === 'landscape' ? '横屏 16:9' : '竖屏 9:16';
+        return;
+      }
+      const forcedLandscape = settings.orientation === 'portrait' && vw > vh;
+      cameraRatioStat.textContent = forcedLandscape
+        ? `实采 ${vw}×${vh} (浏览器输出横屏)`
+        : `实采 ${vw}×${vh}`;
+    }
+    previewVideo.addEventListener('resize', updateCameraRatioStat);
+
     let cameraRequest = 0;
     let cameraPending = false;
     let noCamera = false;
@@ -1859,6 +1940,7 @@
       previewVideo.pause();
       previewVideo.srcObject = null;
       stopTracks(previous);
+      updateCameraRatioStat();
     }
 
     function waitForFrame(media) {
@@ -1908,11 +1990,17 @@
       const audio = withAudio ? { echoCancellation: true, noiseSuppression: true, autoGainControl: true } : false;
       try {
         try {
-          granted = await navigator.mediaDevices.getUserMedia({ video: VIDEO_CONSTRAINTS, audio });
+          granted = await navigator.mediaDevices.getUserMedia({ video: getVideoConstraints(settings.orientation, 'hd'), audio });
         } catch (error) {
           if (request !== cameraRequest) return false;
           if (error.name !== 'OverconstrainedError' && error.name !== 'ConstraintNotSatisfiedError') throw error;
-          granted = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: withAudio });
+          try {
+            granted = await navigator.mediaDevices.getUserMedia({ video: getVideoConstraints(settings.orientation, 'sd'), audio });
+          } catch (sdError) {
+            if (request !== cameraRequest) return false;
+            if (sdError.name !== 'OverconstrainedError' && sdError.name !== 'ConstraintNotSatisfiedError') throw sdError;
+            granted = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: withAudio });
+          }
         }
         if (request !== cameraRequest || document.hidden) {
           stopTracks(granted);
@@ -1921,6 +2009,7 @@
         stream = granted;
         previewVideo.srcObject = granted;
         await waitForFrame(granted);
+        updateCameraRatioStat();
         if (request !== cameraRequest) return false;
         if (!usableTrack(granted, 'video') || (withAudio && !usableTrack(granted, 'audio'))) {
           throw new Error('摄像头或麦克风无有效轨道');
@@ -2476,8 +2565,40 @@
       leadDelayVal.textContent = `${settings.leadDelay.toFixed(1)} 秒`;
       switchVoice.setAttribute('aria-checked', settings.voiceFollow ? 'true' : 'false');
       settingVoiceDot.classList.toggle('on', Boolean(settings.voiceFollow));
+      applyOrientationUI();
       recalcScrollBounds();
     }
+
+    function applyOrientationUI() {
+      const isLand = settings.orientation === 'landscape';
+      btnRatio.textContent = isLand ? '横屏' : '竖屏';
+      btnOptPortrait.classList.toggle('active', !isLand);
+      btnOptPortrait.setAttribute('aria-pressed', String(!isLand));
+      btnOptLandscape.classList.toggle('active', isLand);
+      btnOptLandscape.setAttribute('aria-pressed', String(isLand));
+      updateCameraRatioStat();
+    }
+
+    function setOrientation(nextOrientation) {
+      const normalized = nextOrientation === 'landscape' ? 'landscape' : 'portrait';
+      if (recState !== 'idle') {
+        showToast('录制中暂不支持切换横竖屏');
+        return;
+      }
+      if (settings.orientation === normalized) return;
+      stopRehearsal();
+      settings.orientation = normalized;
+      saveSettings();
+      applyOrientationUI();
+      showToast(normalized === 'landscape' ? '已切换为横屏 16:9 取景' : '已切换为竖屏 9:16 取景');
+      if (!noCamera) initCamera(false);
+    }
+
+    btnRatio.addEventListener('click', () => {
+      setOrientation(settings.orientation === 'landscape' ? 'portrait' : 'landscape');
+    });
+    btnOptPortrait.addEventListener('click', () => setOrientation('portrait'));
+    btnOptLandscape.addEventListener('click', () => setOrientation('landscape'));
 
     btnSpeedDown.addEventListener('click', () => applySpeed(settings.speed - 4));
     btnSpeedUp.addEventListener('click', () => applySpeed(settings.speed + 4));
@@ -3642,7 +3763,7 @@
         btnRetake.disabled = true;
         Promise.resolve(pending).catch(error => {
           if (reviewFile === file && error?.name !== 'AbortError') {
-            showToast('系统分享未完成，可点「下载文件」保存', 4200);
+            showToast('系统分享未完成，可点「存为文件」下载文件保存', 4200);
           }
         }).finally(() => {
           if (reviewFile === file) {
@@ -3652,7 +3773,7 @@
           }
         });
       } catch (_) {
-        showToast('无法打开系统分享，可点「下载文件」保存', 4200);
+        showToast('无法打开系统分享，可点「存为文件」下载文件保存', 4200);
       }
     });
 
